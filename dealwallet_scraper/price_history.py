@@ -1,56 +1,65 @@
 import logging
 import os
-import sys
+from pathlib import Path
 from urllib.parse import quote
 
-import requests
+import psycopg2
 from dotenv import load_dotenv
 
 
-if sys.stdout:
-    sys.stdout.reconfigure(
-        encoding="utf-8",
-        errors="replace",
-    )
-
-
-load_dotenv()
-
+# ============================================================
+# LOGGING
+# ============================================================
 
 logger = logging.getLogger(__name__)
 
 
-SUPABASE_URL = os.getenv("Dealwallet_supabase_url")
-SUPABASE_KEY = os.getenv("Dealwallet_supabase_key")
-SUPABASE_SCHEMA = os.getenv(
-    "Dealwallet_SUPABASE_SCHEMA",
-    "public",
-)
-SUPABASE_TABLE = os.getenv(
-    "Dealwallet_SUPABASE_TABLE",
+# ============================================================
+# LOAD .ENV FROM PROJECT ROOT
+# ============================================================
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+ENV_FILE = PROJECT_ROOT / ".env"
+
+load_dotenv(dotenv_path=ENV_FILE, override=False)
+
+
+# ============================================================
+# DATABASE CONFIGURATION
+# ============================================================
+
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT", "5432")
+DB_NAME = os.getenv("DB_NAME")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+
+DB_SCHEMA = os.getenv("DB_SCHEMA", "public")
+
+DB_PRODUCTS_TABLE = os.getenv(
+    "DB_PRODUCTS_TABLE",
     "products",
 )
 
+DB_PRICE_HISTORY_TABLE = os.getenv(
+    "DB_PRICE_HISTORY_TABLE",
+    "price_history",
+)
 
-# ============================================================
-# EXPECTED PRODUCT FIELDS
-# ============================================================
+DB_ORGANIZATION_TABLE = os.getenv(
+    "DB_ORGANIZATION_TABLE",
+    "organization",
+)
 
-REQUIRED_FIELDS = [
-    "name",
-    "price",
-    "currency",
-    "original_price",
-    "discount",
-    "ratings",
-    "description",
-    "image_link",
-    "product_link",
-    "organization_id",
-    "store_id",
-    "categories_id",
-    "timestamp",
-]
+DB_STORE_TABLE = os.getenv(
+    "DB_STORE_TABLE",
+    "stores",
+)
+
+DB_CATEGORY_TABLE = os.getenv(
+    "DB_CATEGORY_TABLE",
+    "categories",
+)
 
 
 # ============================================================
@@ -78,71 +87,157 @@ def generate_affiliate_url(
         f"https://linksredirect.com/?cid={cid}"
         f"&subid={subid}"
         f"&subid2=&subid3=&subid4=&subid5="
-        f"&source=api&url={encoded_url}"
+        f"&source=api"
+        f"&url={encoded_url}"
     )
 
     return affiliate_url
 
 
 # ============================================================
-# FIELD VALIDATION
+# DATABASE CONNECTION
 # ============================================================
 
-def validate_product(product):
+def get_connection():
     """
-    Validate scraped product data before sending it
-    to Supabase.
+    Create PostgreSQL database connection.
     """
 
-    if not isinstance(product, dict):
-        logger.error(
-            "Invalid product received. Expected dictionary."
+    missing = []
+
+    if not DB_HOST:
+        missing.append("DB_HOST")
+
+    if not DB_NAME:
+        missing.append("DB_NAME")
+
+    if not DB_USER:
+        missing.append("DB_USER")
+
+    if not DB_PASSWORD:
+        missing.append("DB_PASSWORD")
+
+    if missing:
+        raise RuntimeError(
+            f"Missing database configuration in .env: "
+            f"{', '.join(missing)}"
         )
-        return False
 
-    missing_fields = []
+    return psycopg2.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+    )
 
-    for field in REQUIRED_FIELDS:
-        if field not in product:
-            missing_fields.append(field)
 
-    if missing_fields:
+# ============================================================
+# LOOKUP ORGANIZATION UUID
+# ============================================================
+
+def get_organization_id(cursor, organization_name):
+    """
+    Find organization UUID using organization name.
+    """
+
+    if not organization_name:
+        return None
+
+    query = f'''
+        SELECT id
+        FROM "{DB_SCHEMA}"."{DB_ORGANIZATION_TABLE}"
+        WHERE LOWER(TRIM(name)) = LOWER(TRIM(%s))
+        LIMIT 1
+    '''
+
+    cursor.execute(
+        query,
+        (organization_name,),
+    )
+
+    result = cursor.fetchone()
+
+    if not result:
         logger.error(
-            "Product is missing required fields: %s",
-            ", ".join(missing_fields),
+            "Organization not found: %s",
+            organization_name,
         )
-        return False
+        return None
 
-    # --------------------------------------------------------
-    # Validate important values
-    # --------------------------------------------------------
+    return str(result[0])
 
-    if not product.get("name"):
-        logger.error("Product name is empty.")
-        return False
 
-    if product.get("price") is None:
+# ============================================================
+# LOOKUP STORE UUID
+# ============================================================
+
+def get_store_id(cursor, store_name):
+    """
+    Find store UUID using store name.
+    """
+
+    if not store_name:
+        return None
+
+    query = f'''
+        SELECT id
+        FROM "{DB_SCHEMA}"."{DB_STORE_TABLE}"
+        WHERE LOWER(TRIM(name)) = LOWER(TRIM(%s))
+        LIMIT 1
+    '''
+
+    cursor.execute(
+        query,
+        (store_name,),
+    )
+
+    result = cursor.fetchone()
+
+    if not result:
         logger.error(
-            "Price is missing for product: %s",
-            product.get("name"),
+            "Store not found: %s",
+            store_name,
         )
-        return False
+        return None
 
-    if not product.get("product_link"):
+    return str(result[0])
+
+
+# ============================================================
+# LOOKUP CATEGORY UUID
+# ============================================================
+
+def get_category_id(cursor, category_name):
+    """
+    Find category UUID using category name.
+    """
+
+    if not category_name:
+        return None
+
+    query = f'''
+        SELECT id
+        FROM "{DB_SCHEMA}"."{DB_CATEGORY_TABLE}"
+        WHERE LOWER(TRIM(name)) = LOWER(TRIM(%s))
+        LIMIT 1
+    '''
+
+    cursor.execute(
+        query,
+        (category_name,),
+    )
+
+    result = cursor.fetchone()
+
+    if not result:
         logger.error(
-            "Product link is missing for product: %s",
-            product.get("name"),
+            "Category not found: %s",
+            category_name,
         )
-        return False
+        return None
 
-    if not product.get("store_id"):
-        logger.error(
-            "Store ID is missing for product: %s",
-            product.get("name"),
-        )
-        return False
-
-    return True
+    return str(result[0])
 
 
 # ============================================================
@@ -151,172 +246,630 @@ def validate_product(product):
 
 def prepare_product(product):
     """
-    Validate and prepare scraped product data
-    before inserting it into Supabase.
+    Validate and prepare scraped product data.
     """
 
-    if not validate_product(product):
+    if not product:
+        logger.warning(
+            "Empty product received. Product skipped."
+        )
         return None
 
-    product_data = {
-        "name": product.get("name"),
-        "price": product.get("price"),
-        "currency": product.get("currency"),
-        "original_price": product.get("original_price"),
-        "discount": product.get("discount"),
-        "ratings": product.get("ratings"),
-        "description": product.get("description"),
-        "image_link": product.get("image_link"),
-        "product_link": product.get("product_link"),
-        "affiliate_url": generate_affiliate_url(
-            product.get("product_link")
-        ),
-        "organization_id": product.get(
-            "organization_id"
-        ),
-        "store_id": product.get("store_id"),
-        "categories_id": product.get(
-            "categories_id"
-        ),
-        "timestamp": product.get("timestamp"),
-    }
+    required_fields = [
+        "name",
+        "price",
+        "product_link",
+        "image_link",
+        "discount",
+        "organization_id",
+        "store_id",
+        "categories_id",
+    ]
 
-    return product_data
+    for field in required_fields:
+
+        value = product.get(field)
+
+        if value is None or value == "":
+            logger.warning(
+                "Required field '%s' is missing. "
+                "Product skipped: %s",
+                field,
+                product.get("name", "Unknown"),
+            )
+            return None
+
+    # Generate affiliate URL.
+    product["affiliate_url"] = generate_affiliate_url(
+        product.get("product_link")
+    )
+
+    return product
 
 
 # ============================================================
-# SEND ONE PRODUCT TO SUPABASE
+# FIND EXISTING PRODUCT
+# ============================================================
+
+def find_existing_product(
+    cursor,
+    store_id,
+    product_link,
+    product_name,
+):
+    """
+    Find an existing product using:
+
+        store_id + product_link + name
+
+    Returns:
+        (product_id, existing_price)
+
+    or:
+        None
+    """
+
+    query = f'''
+        SELECT
+            id,
+            price
+        FROM "{DB_SCHEMA}"."{DB_PRODUCTS_TABLE}"
+        WHERE store_id = %s
+          AND product_link = %s
+          AND name = %s
+        LIMIT 1
+    '''
+
+    cursor.execute(
+        query,
+        (
+            store_id,
+            product_link,
+            product_name,
+        ),
+    )
+
+    result = cursor.fetchone()
+
+    if not result:
+        return None
+
+    return (
+        str(result[0]),
+        result[1],
+    )
+
+
+# ============================================================
+# INSERT NEW PRODUCT
+# ============================================================
+
+def insert_product(
+    cursor,
+    product,
+    organization_id,
+    store_id,
+    category_id,
+):
+    """
+    Insert a new product.
+
+    The database automatically generates products.id.
+
+    RETURNING id gets the generated UUID.
+    """
+
+    query = f'''
+        INSERT INTO "{DB_SCHEMA}"."{DB_PRODUCTS_TABLE}" (
+            name,
+            price,
+            currency,
+            original_price,
+            discount,
+            ratings,
+            description,
+            image_link,
+            product_link,
+            organization_id,
+            store_id,
+            categories_id,
+            affiliate_url,
+            created_at
+        )
+        VALUES (
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            %s
+        )
+        RETURNING id
+    '''
+
+    cursor.execute(
+        query,
+        (
+            product.get("name"),
+            product.get("price"),
+            product.get("currency"),
+            product.get("original_price"),
+            product.get("discount"),
+            product.get("ratings"),
+            product.get("description"),
+            product.get("image_link"),
+            product.get("product_link"),
+            organization_id,
+            store_id,
+            category_id,
+            product.get("affiliate_url"),
+            product.get("created_at"),
+        ),
+    )
+
+    result = cursor.fetchone()
+
+    if not result:
+        raise RuntimeError(
+            "Database did not return generated product UUID."
+        )
+
+    product_id = str(result[0])
+
+    logger.info(
+        "NEW PRODUCT INSERTED | Product: %s | UUID: %s",
+        product.get("name"),
+        product_id,
+    )
+
+    return product_id
+
+
+# ============================================================
+# UPDATE EXISTING PRODUCT
+# ============================================================
+
+def update_product(
+    cursor,
+    product_id,
+    product,
+    organization_id,
+    store_id,
+    category_id,
+):
+    """
+    Update an existing product after its price changes.
+    """
+
+    query = f'''
+        UPDATE "{DB_SCHEMA}"."{DB_PRODUCTS_TABLE}"
+        SET
+            name = %s,
+            price = %s,
+            currency = %s,
+            original_price = %s,
+            discount = %s,
+            ratings = %s,
+            description = %s,
+            image_link = %s,
+            product_link = %s,
+            organization_id = %s,
+            store_id = %s,
+            categories_id = %s,
+            affiliate_url = %s,
+            created_at = %s
+        WHERE id = %s
+    '''
+
+    cursor.execute(
+        query,
+        (
+            product.get("name"),
+            product.get("price"),
+            product.get("currency"),
+            product.get("original_price"),
+            product.get("discount"),
+            product.get("ratings"),
+            product.get("description"),
+            product.get("image_link"),
+            product.get("product_link"),
+            organization_id,
+            store_id,
+            category_id,
+            product.get("affiliate_url"),
+            product.get("created_at"),
+            product_id,
+        ),
+    )
+
+    if cursor.rowcount != 1:
+        raise RuntimeError(
+            f"Product update failed. Product UUID: {product_id}"
+        )
+
+    logger.info(
+        "EXISTING PRODUCT UPDATED | Product: %s | UUID: %s",
+        product.get("name"),
+        product_id,
+    )
+
+
+# ============================================================
+# INSERT PRICE HISTORY
+# ============================================================
+
+def insert_price_history(
+    cursor,
+    product_id,
+    product,
+    organization_id,
+    store_id,
+    category_id,
+):
+    """
+    Insert a complete snapshot of the product into price_history.
+
+    price_history.id is automatically generated by PostgreSQL.
+
+    price_history.product_id references products.id.
+    """
+
+    query = f'''
+        INSERT INTO "{DB_SCHEMA}"."{DB_PRICE_HISTORY_TABLE}" (
+            product_id,
+            name,
+            price,
+            currency,
+            original_price,
+            discount,
+            ratings,
+            description,
+            image_link,
+            product_link,
+            organization_id,
+            store_id,
+            categories_id,
+            created_at,
+            affiliate_url
+        )
+        VALUES (
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            %s,
+            %s
+        )
+    '''
+
+    cursor.execute(
+        query,
+        (
+            product_id,
+            product.get("name"),
+            product.get("price"),
+            product.get("currency"),
+            product.get("original_price"),
+            product.get("discount"),
+            product.get("ratings"),
+            product.get("description"),
+            product.get("image_link"),
+            product.get("product_link"),
+            organization_id,
+            store_id,
+            category_id,
+            product.get("created_at"),
+            product.get("affiliate_url"),
+        ),
+    )
+
+    logger.info(
+        "PRICE HISTORY INSERTED | Product: %s | UUID: %s",
+        product.get("name"),
+        product_id,
+    )
+
+
+# ============================================================
+# SEND PRODUCT TO DATABASE
 # ============================================================
 
 def send_to_database(product):
     """
-    Validate, prepare and send one scraped product
-    to the Supabase products table.
+    Complete database flow for one scraped product.
+
+    Flow:
+
+    1. Validate product.
+    2. Connect to PostgreSQL.
+    3. Resolve organization name -> UUID.
+    4. Resolve store name -> UUID.
+    5. Resolve category name -> UUID.
+    6. Check whether product already exists using:
+           store_id + product_link + name
+    7. If new:
+           INSERT products
+           DB generates products.id
+           INSERT price_history
+    8. If existing:
+           Compare price.
+           If price changed:
+               UPDATE products
+               INSERT price_history
+           If price did not change:
+               Do nothing.
+    9. Commit.
+    10. On error, rollback only this product.
     """
 
-    if not SUPABASE_URL:
-        logger.error(
-            "Dealwallet_supabase_url is not configured."
-        )
+    product = prepare_product(product)
+
+    if not product:
         return False
 
-    if not SUPABASE_KEY:
-        logger.error(
-            "Dealwallet_supabase_key is not configured."
-        )
-        return False
+    connection = None
+    cursor = None
 
-    product_data = prepare_product(product)
-
-    if not product_data:
-        logger.error(
-            "Product validation failed. "
-            "Data was not sent to database."
-        )
-        return False
-
-    url = (
-        f"{SUPABASE_URL}/rest/v1/"
-        f"{SUPABASE_TABLE}"
+    product_name = product.get(
+        "name",
+        "Unknown",
     )
 
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "Prefer": "return=representation",
-        "Content-Profile": SUPABASE_SCHEMA,
-    }
-
     try:
-        response = requests.post(
-            url,
-            headers=headers,
-            json=product_data,
-            timeout=30,
+
+        # ----------------------------------------------------
+        # CONNECT
+        # ----------------------------------------------------
+
+        connection = get_connection()
+        cursor = connection.cursor()
+
+        # ----------------------------------------------------
+        # RESOLVE ORGANIZATION
+        # ----------------------------------------------------
+
+        organization_id = get_organization_id(
+            cursor,
+            product.get("organization_id"),
         )
 
-        response.raise_for_status()
+        if not organization_id:
+            logger.warning(
+                "Product skipped because organization "
+                "lookup failed | Product: %s",
+                product_name,
+            )
+            connection.rollback()
+            return False
+
+        # ----------------------------------------------------
+        # RESOLVE STORE
+        # ----------------------------------------------------
+
+        store_id = get_store_id(
+            cursor,
+            product.get("store_id"),
+        )
+
+        if not store_id:
+            logger.warning(
+                "Product skipped because store "
+                "lookup failed | Product: %s",
+                product_name,
+            )
+            connection.rollback()
+            return False
+
+        # ----------------------------------------------------
+        # RESOLVE CATEGORY
+        # ----------------------------------------------------
+
+        category_id = get_category_id(
+            cursor,
+            product.get("categories_id"),
+        )
+
+        if not category_id:
+            logger.warning(
+                "Product skipped because category "
+                "lookup failed | Product: %s",
+                product_name,
+            )
+            connection.rollback()
+            return False
+
+        # ----------------------------------------------------
+        # FIND EXISTING PRODUCT
+        # ----------------------------------------------------
+
+        existing_product = find_existing_product(
+            cursor,
+            store_id,
+            product.get("product_link"),
+            product.get("name"),
+        )
+
+        # ====================================================
+        # NEW PRODUCT
+        # ====================================================
+
+        if existing_product is None:
+
+            logger.info(
+                "NEW PRODUCT FOUND | Product: %s",
+                product_name,
+            )
+
+            product_id = insert_product(
+                cursor,
+                product,
+                organization_id,
+                store_id,
+                category_id,
+            )
+
+            insert_price_history(
+                cursor,
+                product_id,
+                product,
+                organization_id,
+                store_id,
+                category_id,
+            )
+
+            connection.commit()
+
+            logger.info(
+                "PRODUCT SAVED SUCCESSFULLY | "
+                "NEW PRODUCT | Product: %s | UUID: %s",
+                product_name,
+                product_id,
+            )
+
+            return True
+
+        # ====================================================
+        # EXISTING PRODUCT
+        # ====================================================
+
+        existing_product_id, existing_price = existing_product
+
+        current_price = product.get("price")
 
         logger.info(
-            "Product sent successfully: %s | Store: %s",
-            product_data["name"],
-            product_data["store_id"],
+            "EXISTING PRODUCT FOUND | "
+            "Product: %s | UUID: %s | "
+            "Existing Price: %s | Current Price: %s",
+            product_name,
+            existing_product_id,
+            existing_price,
+            current_price,
+        )
+
+        # ----------------------------------------------------
+        # PRICE HAS NOT CHANGED
+        # ----------------------------------------------------
+
+        if existing_price == current_price:
+
+            logger.info(
+                "PRICE UNCHANGED | "
+                "No product update or price history entry | "
+                "Product: %s | UUID: %s | Price: %s",
+                product_name,
+                existing_product_id,
+                current_price,
+            )
+
+            connection.rollback()
+
+            return True
+
+        # ----------------------------------------------------
+        # PRICE HAS CHANGED
+        # ----------------------------------------------------
+
+        logger.info(
+            "PRICE CHANGED | "
+            "Product: %s | Old Price: %s | New Price: %s",
+            product_name,
+            existing_price,
+            current_price,
+        )
+
+        update_product(
+            cursor,
+            existing_product_id,
+            product,
+            organization_id,
+            store_id,
+            category_id,
+        )
+
+        insert_price_history(
+            cursor,
+            existing_product_id,
+            product,
+            organization_id,
+            store_id,
+            category_id,
+        )
+
+        connection.commit()
+
+        logger.info(
+            "PRODUCT UPDATED AND HISTORY SAVED | "
+            "Product: %s | UUID: %s | "
+            "Old Price: %s | New Price: %s",
+            product_name,
+            existing_product_id,
+            existing_price,
+            current_price,
         )
 
         return True
 
-    except requests.exceptions.RequestException as exc:
+    except Exception as exc:
+
+        if connection:
+
+            try:
+                connection.rollback()
+
+                logger.warning(
+                    "Transaction rolled back for product: %s",
+                    product_name,
+                )
+
+            except Exception as rollback_error:
+
+                logger.error(
+                    "Rollback failed for product: %s | Error: %s",
+                    product_name,
+                    rollback_error,
+                )
 
         logger.error(
-            "Failed to send product to Supabase: %s",
+            "PRODUCT SKIPPED | Product: %s | Error: %s",
+            product_name,
             exc,
         )
 
-        if exc.response is not None:
-            logger.error(
-                "Supabase response: %s",
-                exc.response.text,
-            )
+        logger.exception(
+            "Database error details"
+        )
 
         return False
 
+    finally:
 
-# ============================================================
-# SEND MULTIPLE PRODUCTS
-# ============================================================
+        if cursor:
 
-def send_products_to_database(products):
-    """
-    Validate and send multiple scraped products
-    to Supabase.
-    """
+            try:
+                cursor.close()
+            except Exception:
+                pass
 
-    if not isinstance(products, list):
-        logger.error(
-            "Expected products to be a list."
-        )
-        return 0
+        if connection:
 
-    success_count = 0
-
-    for product in products:
-
-        if send_to_database(product):
-            success_count += 1
-
-    logger.info(
-        "Database upload completed: %s/%s products sent.",
-        success_count,
-        len(products),
-    )
-
-    return success_count
-
-
-# def send_to_database(product):
-#     """
-#     Test mode:
-#     Validate and display product data,
-#     but do NOT send it to Supabase.
-#     """
-
-#     product_data = prepare_product(product)
-
-#     if not product_data:
-#         print("Product validation failed.")
-#         return False
-
-#     print("\n" + "=" * 60)
-#     print("PRODUCT READY FOR DATABASE")
-#     print("=" * 60)
-
-#     for key, value in product_data.items():
-#         print(f"{key}: {value}")
-
-#     print("=" * 60)
-#     print("DATABASE SEND DISABLED - TEST MODE")
-#     print("=" * 60 + "\n")
-
-#     return True
+            try:
+                connection.close()
+            except Exception:
+                pass
