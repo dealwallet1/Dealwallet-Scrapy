@@ -23,20 +23,38 @@ MAX_PAGES = 2
 BASE_URLS = {
     "Beauty": [
         "https://www.soulflower.in/collections/essential-oils",
-
-        # Add more collections here when required:
-        # "https://www.soulflower.in/collections/hair-oils",
-        # "https://www.soulflower.in/collections/hair-serum",
-        # "https://www.soulflower.in/collections/shampoos",
-        # "https://www.soulflower.in/collections/face-wash",
-        # "https://www.soulflower.in/collections/face-masks",
-        # "https://www.soulflower.in/collections/serums",
-        # "https://www.soulflower.in/collections/sunscreen",
+        "https://www.soulflower.in/collections/hair-oils",
+        "https://www.soulflower.in/collections/hair-serum",
+        "https://www.soulflower.in/collections/shampoos",
+        "https://www.soulflower.in/collections/face-wash",
+        "https://www.soulflower.in/collections/face-masks",
+        "https://www.soulflower.in/collections/serums",
+        "https://www.soulflower.in/collections/sunscreen",
     ]
 }
 
-STORE_NAME = "Soulflower"
-ORGANIZATION_ID = "Dealwallet"
+
+# ============================================================
+# REQUEST / RATE LIMIT SETTINGS
+# ============================================================
+
+# Delay between listing page requests.
+LISTING_PAGE_DELAY = 5
+
+# Delay before opening product detail pages.
+DETAIL_PAGE_DELAY = 3
+
+# Additional delay after receiving HTTP 429.
+RATE_LIMIT_DELAY = 30
+
+# Number of times to retry a 429 page.
+MAX_429_RETRIES = 3
+
+# Maximum page load timeout.
+PAGE_TIMEOUT = 60000
+
+# Product selector wait timeout.
+PRODUCT_SELECTOR_TIMEOUT = 30000
 
 
 # ============================================================
@@ -167,6 +185,32 @@ def extract_rating_preserve_decimal(text):
     return int(value)
 
 
+def normalize_text(text):
+
+    if not text:
+        return ""
+
+    return " ".join(
+        str(text).split()
+    )
+
+
+def normalize_product_name(name):
+
+    if not name:
+        return ""
+
+    name = normalize_text(name)
+
+    name = (
+        name
+        .replace("–", "")
+        .replace("—", "")
+    )
+
+    return name.strip()
+
+
 # ============================================================
 # PRODUCT DESCRIPTION
 # ============================================================
@@ -200,6 +244,10 @@ def extract_product_description(product_html):
         "additional information",
     }
 
+    # ========================================================
+    # METHOD 1 - PRODUCT ACCORDIONS
+    # ========================================================
+
     accordions = product_soup.select(
         "div.product__accordion details"
     )
@@ -222,20 +270,20 @@ def extract_product_description(product_html):
             strip=True
         )
 
-        title = title_raw.lower()
+        title = title_raw.lower().strip()
 
         if title in skip_titles:
             continue
 
-        # Remove unnecessary HTML elements
+        # Remove unnecessary HTML elements.
         for tag in content_tag.select(
-            "svg, img, button"
+            "svg, img, button, script, style"
         ):
             tag.decompose()
 
-        # ----------------------------------------------------
+        # ====================================================
         # WHAT DOES IT DO
-        # ----------------------------------------------------
+        # ====================================================
 
         if title == "what does it do":
 
@@ -266,9 +314,7 @@ def extract_product_description(product_html):
                     strip=True
                 )
 
-                desc = " ".join(
-                    desc.split()
-                )
+                desc = normalize_text(desc)
 
                 if desc:
                     parts.append(
@@ -276,7 +322,6 @@ def extract_product_description(product_html):
                     )
 
             if parts:
-
                 sections.append(
                     f"{title_raw}: "
                     + " ".join(parts)
@@ -284,9 +329,9 @@ def extract_product_description(product_html):
 
             continue
 
-        # ----------------------------------------------------
+        # ====================================================
         # NORMAL CONTENT
-        # ----------------------------------------------------
+        # ====================================================
 
         texts = []
 
@@ -310,17 +355,33 @@ def extract_product_description(product_html):
                 texts.append(text)
 
         if not texts:
+            # Fallback to complete text content.
+            fallback_text = content_tag.get_text(
+                " ",
+                strip=True
+            )
+
+            fallback_text = normalize_text(
+                fallback_text
+            )
+
+            if fallback_text:
+                texts.append(
+                    fallback_text
+                )
+
+        if not texts:
             continue
 
         clean_text = " ".join(texts)
 
-        clean_text = " ".join(
-            clean_text.split()
+        clean_text = normalize_text(
+            clean_text
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # STOP INFORMATION
-        # ----------------------------------------------------
+        # ====================================================
 
         lower_text = clean_text.lower()
 
@@ -339,9 +400,9 @@ def extract_product_description(product_html):
 
                 break
 
-        # ----------------------------------------------------
+        # ====================================================
         # REMOVE DUPLICATE CONSECUTIVE WORDS
-        # ----------------------------------------------------
+        # ====================================================
 
         words = clean_text.split()
 
@@ -367,12 +428,183 @@ def extract_product_description(product_html):
                 f"{final_text}"
             )
 
+    # ========================================================
+    # METHOD 2 - COMMON PRODUCT DESCRIPTION CONTAINERS
+    # ========================================================
+
+    if not sections:
+
+        description_selectors = [
+            ".product__description",
+            ".product-description",
+            ".product__info-description",
+            ".product-description-wrapper",
+            ".product-single__description",
+            "[class*='product-description']",
+        ]
+
+        for selector in description_selectors:
+
+            description_tag = product_soup.select_one(
+                selector
+            )
+
+            if not description_tag:
+                continue
+
+            for tag in description_tag.select(
+                "svg, img, button, script, style"
+            ):
+                tag.decompose()
+
+            text = description_tag.get_text(
+                " ",
+                strip=True
+            )
+
+            text = normalize_text(text)
+
+            if text:
+                sections.append(
+                    f"Description: {text}"
+                )
+
+                break
+
+    # ========================================================
+    # METHOD 3 - META DESCRIPTION
+    # ========================================================
+
+    if not sections:
+
+        meta_description = product_soup.select_one(
+            'meta[name="description"]'
+        )
+
+        if meta_description:
+
+            content = meta_description.get(
+                "content"
+            )
+
+            content = normalize_text(
+                content
+            )
+
+            if content:
+                sections.append(
+                    f"Description: {content}"
+                )
+
+    # ========================================================
+    # METHOD 4 - OG DESCRIPTION
+    # ========================================================
+
+    if not sections:
+
+        og_description = product_soup.select_one(
+            'meta[property="og:description"]'
+        )
+
+        if og_description:
+
+            content = og_description.get(
+                "content"
+            )
+
+            content = normalize_text(
+                content
+            )
+
+            if content:
+                sections.append(
+                    f"Description: {content}"
+                )
+
+    # ========================================================
+    # METHOD 5 - JSON-LD DESCRIPTION
+    # ========================================================
+
+    if not sections:
+
+        scripts = product_soup.select(
+            'script[type="application/ld+json"]'
+        )
+
+        for script in scripts:
+
+            raw_json = script.string
+
+            if not raw_json:
+                continue
+
+            try:
+                data = json.loads(raw_json)
+            except Exception:
+                continue
+
+            json_objects = []
+
+            if isinstance(data, dict):
+                json_objects.append(data)
+
+                if isinstance(
+                    data.get("@graph"),
+                    list
+                ):
+                    json_objects.extend(
+                        data["@graph"]
+                    )
+
+            elif isinstance(data, list):
+                json_objects.extend(data)
+
+            for item in json_objects:
+
+                if not isinstance(item, dict):
+                    continue
+
+                description = item.get(
+                    "description"
+                )
+
+                if not description:
+                    continue
+
+                description = normalize_text(
+                    description
+                )
+
+                if description:
+                    sections.append(
+                        f"Description: {description}"
+                    )
+
+                    break
+
+            if sections:
+                break
+
+    # ========================================================
+    # FINAL RESULT
+    # ========================================================
+
     if not sections:
         return None
 
-    return " || ".join(
-        sections
+    description = " || ".join(sections)
+
+    # Remove an unwanted leading "Description:" label that
+    # appears in some Soulflower descriptions.
+    description = re.sub(
+        r"^\s*description\s*:\s*",
+        "",
+        description,
+        count=1,
+        flags=re.IGNORECASE,
     )
+
+    return description.strip()
 
 
 # ============================================================
@@ -399,8 +631,9 @@ async def extract_image(card):
     attributes = [
         "src",
         "data-src",
-        "data-srcset",
         "data-lazy-src",
+        "data-original",
+        "data-srcset",
     ]
 
     for attribute in attributes:
@@ -417,7 +650,7 @@ async def extract_image(card):
         if not value:
             continue
 
-        # srcset can contain multiple URLs
+        # srcset can contain multiple URLs.
         image_url = value.split(",")[0].strip()
 
         image_url = image_url.split()[0]
@@ -429,6 +662,374 @@ async def extract_image(card):
             BASE_URL,
             image_url
         )
+
+    return None
+
+
+# ============================================================
+# PRODUCT NAME EXTRACTION
+# ============================================================
+
+async def extract_product_name(card):
+
+    selectors = [
+        "a.full-unstyled-link",
+        "a.product-title",
+        "h2 a",
+        "h3 a",
+        ".card__heading a",
+        ".card__heading",
+        ".product-card__title",
+        ".product-title",
+        "[class*='product-title']",
+        "[class*='card__heading']",
+    ]
+
+    for selector in selectors:
+
+        locator = card.locator(
+            selector
+        )
+
+        if await locator.count() == 0:
+            continue
+
+        try:
+
+            text = await locator.first.inner_text()
+
+            name = normalize_product_name(
+                text
+            )
+
+            if name:
+                return name
+
+        except Exception:
+            continue
+
+    # ========================================================
+    # FALLBACK - LINK TITLE ATTRIBUTE
+    # ========================================================
+
+    links = card.locator("a")
+
+    link_count = await links.count()
+
+    for index in range(link_count):
+
+        try:
+
+            link = links.nth(index)
+
+            title = await link.get_attribute(
+                "title"
+            )
+
+            if title:
+
+                title = normalize_product_name(
+                    title
+                )
+
+                if title:
+                    return title
+
+        except Exception:
+            continue
+
+    # ========================================================
+    # FALLBACK - IMAGE ALT
+    # ========================================================
+
+    images = card.locator("img")
+
+    image_count = await images.count()
+
+    for index in range(image_count):
+
+        try:
+
+            image = images.nth(index)
+
+            alt = await image.get_attribute(
+                "alt"
+            )
+
+            if alt:
+
+                alt = normalize_product_name(
+                    alt
+                )
+
+                if alt:
+                    return alt
+
+        except Exception:
+            continue
+
+    return None
+
+
+# ============================================================
+# PRODUCT LINK EXTRACTION
+# ============================================================
+
+async def extract_product_link(card):
+
+    selectors = [
+        "a.full-unstyled-link",
+        "a.product-title",
+        "h2 a",
+        "h3 a",
+        "a[href*='/products/']",
+    ]
+
+    for selector in selectors:
+
+        locator = card.locator(
+            selector
+        )
+
+        if await locator.count() == 0:
+            continue
+
+        try:
+
+            href = await locator.first.get_attribute(
+                "href"
+            )
+
+            if href:
+
+                return urljoin(
+                    BASE_URL,
+                    href
+                )
+
+        except Exception:
+            continue
+
+    # Generic anchor fallback.
+    links = card.locator("a")
+
+    link_count = await links.count()
+
+    for index in range(link_count):
+
+        try:
+
+            href = await links.nth(index).get_attribute(
+                "href"
+            )
+
+            if not href:
+                continue
+
+            if "/products/" in href:
+
+                return urljoin(
+                    BASE_URL,
+                    href
+                )
+
+        except Exception:
+            continue
+
+    return None
+
+
+# ============================================================
+# PRICE EXTRACTION
+# ============================================================
+
+async def get_first_text(card, selectors):
+
+    for selector in selectors:
+
+        locator = card.locator(
+            selector
+        )
+
+        if await locator.count() == 0:
+            continue
+
+        try:
+
+            text = await locator.first.inner_text()
+
+            if text and text.strip():
+                return text.strip()
+
+        except Exception:
+            continue
+
+    return ""
+
+
+# ============================================================
+# OPEN LISTING PAGE WITH 429 RETRY
+# ============================================================
+
+async def open_listing_page(
+    page,
+    url,
+):
+    """
+    Open listing page.
+
+    If Soulflower returns HTTP 429,
+    wait and retry before giving up.
+    """
+
+    for attempt in range(
+        1,
+        MAX_429_RETRIES + 1
+    ):
+
+        try:
+
+            logging.info(
+                f"Opening listing page "
+                f"(attempt {attempt}/"
+                f"{MAX_429_RETRIES}): {url}"
+            )
+
+            response = await page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=PAGE_TIMEOUT,
+            )
+
+            if response:
+
+                status = response.status
+
+                logging.info(
+                    f"HTTP status: {status}"
+                )
+
+                if status == 429:
+
+                    if attempt < MAX_429_RETRIES:
+
+                        logging.warning(
+                            f"HTTP 429 received for "
+                            f"{url}. Waiting "
+                            f"{RATE_LIMIT_DELAY} seconds "
+                            f"before retry."
+                        )
+
+                        await page.wait_for_timeout(
+                            RATE_LIMIT_DELAY * 1000
+                        )
+
+                        continue
+
+                    logging.error(
+                        f"HTTP 429 received after "
+                        f"{MAX_429_RETRIES} attempts: "
+                        f"{url}"
+                    )
+
+                    return None
+
+            return response
+
+        except Exception as exc:
+
+            logging.warning(
+                f"Failed to open listing page "
+                f"{url}: {exc}"
+            )
+
+            if attempt < MAX_429_RETRIES:
+
+                await page.wait_for_timeout(
+                    DETAIL_PAGE_DELAY * 1000
+                )
+
+            else:
+
+                logging.error(
+                    f"Giving up listing page: "
+                    f"{url}"
+                )
+
+    return None
+
+
+# ============================================================
+# OPEN PRODUCT DETAIL PAGE WITH 429 RETRY
+# ============================================================
+
+async def open_product_page(
+    product_page,
+    product_link,
+):
+
+    for attempt in range(
+        1,
+        MAX_429_RETRIES + 1
+    ):
+
+        try:
+
+            response = await product_page.goto(
+                product_link,
+                wait_until="domcontentloaded",
+                timeout=PAGE_TIMEOUT,
+            )
+
+            if response:
+
+                status = response.status
+
+                logging.info(
+                    f"Product page HTTP status: "
+                    f"{status}"
+                )
+
+                if status == 429:
+
+                    if attempt < MAX_429_RETRIES:
+
+                        logging.warning(
+                            f"HTTP 429 on product page. "
+                            f"Waiting "
+                            f"{RATE_LIMIT_DELAY} seconds "
+                            f"before retry: "
+                            f"{product_link}"
+                        )
+
+                        await product_page.wait_for_timeout(
+                            RATE_LIMIT_DELAY * 1000
+                        )
+
+                        continue
+
+                    logging.error(
+                        f"Product page still returned "
+                        f"429 after retries: "
+                        f"{product_link}"
+                    )
+
+                    return None
+
+            return response
+
+        except Exception as exc:
+
+            logging.warning(
+                f"Failed product page "
+                f"{product_link}: {exc}"
+            )
+
+            if attempt < MAX_429_RETRIES:
+
+                await product_page.wait_for_timeout(
+                    DETAIL_PAGE_DELAY * 1000
+                )
 
     return None
 
@@ -469,16 +1070,18 @@ async def scrape_soulflower_async():
                 "width": 1920,
                 "height": 1080,
             },
+            locale="en-IN",
+            timezone_id="Asia/Kolkata",
         )
 
         page = await context.new_page()
 
         page.set_default_timeout(
-            60000
+            PAGE_TIMEOUT
         )
 
         page.set_default_navigation_timeout(
-            60000
+            PAGE_TIMEOUT
         )
 
         # ====================================================
@@ -504,47 +1107,53 @@ async def scrape_soulflower_async():
                         f"?page={page_number}"
                     )
 
+                    logging.info("=" * 60)
+
                     logging.info(
                         f"Fetching: {url}"
                     )
 
-                    # =========================================
-                    # OPEN LISTING PAGE
-                    # =========================================
+                    # =================================================
+                    # DELAY BETWEEN REQUESTS
+                    # =================================================
 
-                    try:
-
-                        response = await page.goto(
-                            url,
-                            wait_until="domcontentloaded",
-                            timeout=60000,
+                    if page_number > 1:
+                        logging.info(
+                            f"Waiting "
+                            f"{LISTING_PAGE_DELAY} seconds "
+                            f"before next page request."
                         )
 
-                    except Exception as exc:
+                        await page.wait_for_timeout(
+                            LISTING_PAGE_DELAY * 1000
+                        )
 
-                        logging.error(
-                            f"Failed to fetch "
-                            f"{url}: {exc}"
+                    # =================================================
+                    # OPEN LISTING PAGE
+                    # =================================================
+
+                    response = await open_listing_page(
+                        page,
+                        url,
+                    )
+
+                    if response is None:
+                        logging.warning(
+                            f"Unable to fetch listing page: "
+                            f"{url}"
                         )
 
                         break
 
-                    if response:
-
-                        logging.info(
-                            f"HTTP status: "
-                            f"{response.status}"
-                        )
-
-                    # =========================================
+                    # =================================================
                     # WAIT FOR PRODUCT CARDS
-                    # =========================================
+                    # =================================================
 
                     try:
 
                         await page.wait_for_selector(
                             "li.grid__item",
-                            timeout=30000,
+                            timeout=PRODUCT_SELECTOR_TIMEOUT,
                         )
 
                     except Exception:
@@ -557,9 +1166,9 @@ async def scrape_soulflower_async():
 
                         break
 
-                    # =========================================
+                    # =================================================
                     # PRODUCT CARDS
-                    # =========================================
+                    # =================================================
 
                     product_cards = page.locator(
                         "li.grid__item"
@@ -583,9 +1192,9 @@ async def scrape_soulflower_async():
                         f"page {page_number}"
                     )
 
-                    # =========================================
+                    # =================================================
                     # PRODUCT LOOP
-                    # =========================================
+                    # =================================================
 
                     for index in range(
                         card_count
@@ -597,40 +1206,15 @@ async def scrape_soulflower_async():
                                 index
                             )
 
-                            # =================================
+                            # =========================================
                             # PRODUCT NAME
-                            # =================================
+                            # =========================================
 
-                            name_locator = card.locator(
-                                "a.full-unstyled-link"
+                            name = await extract_product_name(
+                                card
                             )
 
-                            if (
-                                await name_locator.count()
-                                == 0
-                            ):
-
-                                name_locator = (
-                                    card.locator(
-                                        "a.product-title"
-                                    )
-                                )
-
-                            if (
-                                await name_locator.count()
-                                == 0
-                            ):
-
-                                name_locator = (
-                                    card.locator(
-                                        "h2 a"
-                                    )
-                                )
-
-                            if (
-                                await name_locator.count()
-                                == 0
-                            ):
+                            if not name:
 
                                 logging.warning(
                                     f"Product name "
@@ -640,189 +1224,103 @@ async def scrape_soulflower_async():
 
                                 continue
 
-                            name = await name_locator.first.inner_text()
-
-                            name = normalize_product_name(
-                                name
-                            )
-
-                            if not name:
-                                continue
-
-                            # =================================
+                            # =========================================
                             # PRODUCT LINK
-                            # =================================
+                            # =========================================
 
-                            link_locator = card.locator(
-                                "a"
-                            )
-
-                            product_link = None
-
-                            if (
-                                await link_locator.count()
-                                > 0
-                            ):
-
-                                href = await (
-                                    link_locator
-                                    .first
-                                    .get_attribute(
-                                        "href"
-                                    )
+                            product_link = (
+                                await extract_product_link(
+                                    card
                                 )
-
-                                if href:
-
-                                    product_link = (
-                                        urljoin(
-                                            base_url,
-                                            href
-                                        )
-                                    )
+                            )
 
                             if not product_link:
+
+                                logging.warning(
+                                    f"Product link "
+                                    f"not found for "
+                                    f"{name}"
+                                )
+
                                 continue
 
-                            # =================================
+                            # =========================================
+                            # DUPLICATE CHECK
+                            # =========================================
+
+                            if product_link in seen_links:
+                                continue
+
+                            if name.lower() in seen_names:
+                                continue
+
+                            # =========================================
                             # ORIGINAL PRICE
-                            # =================================
+                            # =========================================
 
-                            original_price_locator = (
-                                card.locator(
-                                    "s.price-item.price-item--regular"
-                                )
+                            original_price_text = await get_first_text(
+                                card,
+                                [
+                                    "s.price-item.price-item--regular",
+                                    "span.price--compare-at",
+                                    "span.original-price",
+                                    ".price__sale s",
+                                    "s",
+                                ],
                             )
 
-                            if (
-                                await original_price_locator.count()
-                                == 0
-                            ):
+                            original_price_text = (
+                                original_price_text
+                                .replace("₹", "")
+                                .replace(",", "")
+                                .replace("Rs. ", "")
+                                .strip()
+                            )
 
-                                original_price_locator = (
-                                    card.locator(
-                                        "span.price--compare-at"
-                                    )
-                                )
-
-                            if (
-                                await original_price_locator.count()
-                                == 0
-                            ):
-
-                                original_price_locator = (
-                                    card.locator(
-                                        "span.original-price"
-                                    )
-                                )
-
-                            original_price_text = ""
-
-                            if (
-                                await original_price_locator.count()
-                                > 0
-                            ):
-
-                                original_price_text = (
-                                    await
-                                    original_price_locator
-                                    .first
-                                    .inner_text()
-                                )
-
-                                original_price_text = (
-                                    original_price_text
-                                    .replace("₹", "")
-                                    .replace(",", "")
-                                    .replace("Rs. ", "")
-                                    .strip()
-                                )
-
-                            # =================================
+                            # =========================================
                             # SALE PRICE
-                            # =================================
+                            # =========================================
 
-                            price_locator = card.locator(
-                                "span.price-item.price-item--sale"
+                            sale_price_text = await get_first_text(
+                                card,
+                                [
+                                    "span.price-item.price-item--sale",
+                                    "span.price-item.price-item--regular",
+                                    "span.price",
+                                    "span.current-price",
+                                    ".price__sale .price-item",
+                                ],
                             )
 
-                            if (
-                                await price_locator.count()
-                                == 0
-                            ):
+                            sale_price_text = (
+                                sale_price_text
+                                .replace("₹", "")
+                                .replace(",", "")
+                                .replace("Rs. ", "")
+                            )
 
-                                price_locator = (
-                                    card.locator(
-                                        "span.price-item.price-item--regular"
-                                    )
-                                )
-
-                            if (
-                                await price_locator.count()
-                                == 0
-                            ):
-
-                                price_locator = (
-                                    card.locator(
-                                        "span.price"
-                                    )
-                                )
-
-                            if (
-                                await price_locator.count()
-                                == 0
-                            ):
-
-                                price_locator = (
-                                    card.locator(
-                                        "span.current-price"
-                                    )
-                                )
-
-                            sale_price_text = ""
-
-                            if (
-                                await price_locator.count()
-                                > 0
-                            ):
+                            if original_price_text:
 
                                 sale_price_text = (
-                                    await
-                                    price_locator
-                                    .first
-                                    .inner_text()
-                                )
-
-                                sale_price_text = (
-                                    sale_price_text
-                                    .replace("₹", "")
-                                    .replace(",", "")
-                                    .replace("Rs. ", "")
-                                )
-
-                                if original_price_text:
-
-                                    sale_price_text = (
-                                        sale_price_text.replace(
-                                            original_price_text,
-                                            ""
-                                        )
+                                    sale_price_text.replace(
+                                        original_price_text,
+                                        ""
                                     )
+                                )
 
-                                sale_price_text = re.sub(
-                                    r"(Regular price|Sale price)",
-                                    "",
-                                    sale_price_text,
-                                    flags=re.I,
-                                ).strip()
+                            sale_price_text = re.sub(
+                                r"(Regular price|Sale price)",
+                                "",
+                                sale_price_text,
+                                flags=re.I,
+                            ).strip()
 
-                            else:
-
+                            if not sale_price_text:
                                 sale_price_text = "N/A"
 
-                            # =================================
+                            # =========================================
                             # PRICE VALUES
-                            # =================================
+                            # =========================================
 
                             original_val = (
                                 parse_price_to_float(
@@ -836,9 +1334,9 @@ async def scrape_soulflower_async():
                                 )
                             )
 
-                            # =================================
+                            # =========================================
                             # PRICE VALIDATION
-                            # =================================
+                            # =========================================
 
                             if (
                                 original_val is not None
@@ -856,9 +1354,9 @@ async def scrape_soulflower_async():
 
                                 continue
 
-                            # =================================
+                            # =========================================
                             # DISCOUNT
-                            # =================================
+                            # =========================================
 
                             if (
                                 original_val is not None
@@ -886,22 +1384,30 @@ async def scrape_soulflower_async():
 
                                 discount = None
 
-                            # =================================
+                            # =========================================
                             # ONLY DISCOUNTED PRODUCTS
-                            # =================================
+                            # =========================================
 
                             if discount is None:
+
+                                logging.info(
+                                    f"Skipping {name} "
+                                    f"because discount "
+                                    f"was not detected."
+                                )
+
                                 continue
 
-                            # =================================
+                            # =========================================
                             # IMAGE
-                            # =================================
+                            # =========================================
 
                             image_link = await extract_image(
                                 card
                             )
 
                             if not image_link:
+
                                 logging.info(
                                     f"Skipping {name} "
                                     f"because image "
@@ -910,9 +1416,9 @@ async def scrape_soulflower_async():
 
                                 continue
 
-                            # =================================
+                            # =========================================
                             # RATING
-                            # =================================
+                            # =========================================
 
                             rating = None
 
@@ -925,32 +1431,42 @@ async def scrape_soulflower_async():
                                 > 0
                             ):
 
-                                rating_text = (
-                                    await
-                                    rating_locator
-                                    .first
-                                    .inner_text()
-                                )
+                                try:
 
-                                rating = (
-                                    extract_rating_preserve_decimal(
-                                        rating_text
+                                    rating_text = (
+                                        await
+                                        rating_locator
+                                        .first
+                                        .inner_text()
                                     )
-                                )
 
-                            # =================================
-                            # DUPLICATE
-                            # =================================
+                                    rating = (
+                                        extract_rating_preserve_decimal(
+                                            rating_text
+                                        )
+                                    )
 
-                            if product_link in seen_links:
-                                continue
+                                except Exception:
+                                    rating = None
 
-                            if name.lower() in seen_names:
-                                continue
+                            # =========================================
+                            # WAIT BEFORE DETAIL PAGE
+                            # =========================================
 
-                            # =================================
+                            logging.info(
+                                f"Waiting "
+                                f"{DETAIL_PAGE_DELAY} seconds "
+                                f"before opening product detail: "
+                                f"{name}"
+                            )
+
+                            await page.wait_for_timeout(
+                                DETAIL_PAGE_DELAY * 1000
+                            )
+
+                            # =========================================
                             # PRODUCT DETAIL PAGE
-                            # =================================
+                            # =========================================
 
                             description = None
 
@@ -959,34 +1475,53 @@ async def scrape_soulflower_async():
                             )
 
                             product_page.set_default_timeout(
-                                60000
+                                PAGE_TIMEOUT
                             )
 
                             product_page.set_default_navigation_timeout(
-                                60000
+                                PAGE_TIMEOUT
                             )
 
                             try:
 
-                                await product_page.goto(
-                                    product_link,
-                                    wait_until="domcontentloaded",
-                                    timeout=60000,
-                                )
-
-                                await product_page.wait_for_timeout(
-                                    2000
-                                )
-
-                                product_html = (
-                                    await product_page.content()
-                                )
-
-                                description = (
-                                    extract_product_description(
-                                        product_html
+                                detail_response = (
+                                    await open_product_page(
+                                        product_page,
+                                        product_link,
                                     )
                                 )
+
+                                if detail_response:
+
+                                    # Give Shopify page time
+                                    # to populate dynamic content.
+                                    await product_page.wait_for_timeout(
+                                        2500
+                                    )
+
+                                    product_html = (
+                                        await product_page.content()
+                                    )
+
+                                    description = (
+                                        extract_product_description(
+                                            product_html
+                                        )
+                                    )
+
+                                    if description:
+
+                                        logging.info(
+                                            f"Description extracted "
+                                            f"for: {name}"
+                                        )
+
+                                    else:
+
+                                        logging.warning(
+                                            f"Description not found "
+                                            f"for: {name}"
+                                        )
 
                             except Exception as exc:
 
@@ -1000,22 +1535,30 @@ async def scrape_soulflower_async():
 
                                 await product_page.close()
 
-                            # =================================
-                            # DESCRIPTION VALIDATION
-                            # =================================
+                            # =========================================
+                            # DESCRIPTION
+                            # =========================================
+                            #
+                            # IMPORTANT:
+                            # Do NOT skip the product if description
+                            # is missing.
+                            #
+                            # Database allows description to be NULL.
+                            #
+                            # =========================================
 
                             if not description:
+
                                 logging.info(
-                                    f"Skipping {name} "
-                                    f"because description "
-                                    f"was not found"
+                                    f"Continuing {name} "
+                                    f"without description."
                                 )
 
-                                continue
+                                description = None
 
-                            # =================================
+                            # =========================================
                             # REQUIRED FIELDS
-                            # =================================
+                            # =========================================
 
                             if (
                                 not name
@@ -1025,11 +1568,16 @@ async def scrape_soulflower_async():
                                 or not product_link
                             ):
 
+                                logging.info(
+                                    f"Skipping incomplete "
+                                    f"product: {name}"
+                                )
+
                                 continue
 
-                            # =================================
+                            # =========================================
                             # FINAL CLEANING
-                            # =================================
+                            # =========================================
 
                             price_val = clean_to_int(
                                 price_val
@@ -1051,9 +1599,9 @@ async def scrape_soulflower_async():
                                 )
                             )
 
-                            # =================================
+                            # =========================================
                             # TIMESTAMP
-                            # =================================
+                            # =========================================
 
                             timestamp = datetime.now(
                                 timezone(
@@ -1066,9 +1614,9 @@ async def scrape_soulflower_async():
                                 "%Y-%m-%dT%H:%M:%S"
                             )
 
-                            # =================================
+                            # =========================================
                             # FINAL PRODUCT
-                            # =================================
+                            # =========================================
 
                             product_data = {
 
@@ -1090,20 +1638,18 @@ async def scrape_soulflower_async():
 
                                 "product_link": product_link,
 
-                                "organization_id": (
-                                    ORGANIZATION_ID
-                                ),
+                                "organization_id": "Dealwallet",
 
-                                "store_id": STORE_NAME,
+                                "store_id": "Soulflower",
 
                                 "categories_id": category,
 
-                                "timestamp": timestamp,
+                                "created_at": timestamp,
                             }
 
-                            # =================================
+                            # =========================================
                             # ADD RESULT
-                            # =================================
+                            # =========================================
 
                             results.append(
                                 product_data
@@ -1136,9 +1682,9 @@ async def scrape_soulflower_async():
                                 f"{exc}"
                             )
 
-                    # =========================================
+                    # =============================================
                     # NEXT PAGE
-                    # =========================================
+                    # =============================================
 
                     page_number += 1
 
@@ -1175,43 +1721,15 @@ async def scrape_soulflower_async():
 
 
 # ============================================================
-# NAME CLEANING
-# ============================================================
-
-def normalize_product_name(name):
-
-    if not name:
-        return ""
-
-    name = normalize_text(name)
-
-    name = (
-        name
-        .replace("–", "")
-        .replace("—", "")
-    )
-
-    return name.strip()
-
-
-def normalize_text(text):
-
-    if not text:
-        return ""
-
-    return " ".join(
-        str(text).split()
-    )
-
-
-# ============================================================
 # WINDOWS PROCESS RUNNER
 # ============================================================
 
 def run_soulflower_scraper():
 
-    # Configure logging inside the separate browser process so
-    # Playwright progress is visible in the Scrapyd job log.
+    # Configure logging inside the separate browser
+    # process so Playwright progress is visible
+    # in the Scrapyd job log.
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
@@ -1226,7 +1744,11 @@ def run_soulflower_scraper():
         )
 
     logging.info("=" * 60)
-    logging.info("Soulflower browser process started.")
+
+    logging.info(
+        "Soulflower browser process started."
+    )
+
     logging.info("=" * 60)
 
     try:
@@ -1236,7 +1758,8 @@ def run_soulflower_scraper():
         )
 
         logging.info(
-            "Soulflower browser process finished. Products returned: %s",
+            "Soulflower browser process finished. "
+            "Products returned: %s",
             len(results),
         )
 
@@ -1293,9 +1816,22 @@ class SoulFlowerSpider(scrapy.Spider):
                 run_soulflower_scraper
             )
 
-        with open("scrape_soulflower.json", "w", encoding="utf-8") as f:
-            json.dump(products, f, ensure_ascii=False, indent=2)
-        
+        # ----------------------------------------------------
+        # SAVE RAW SCRAPED DATA
+        # ----------------------------------------------------
+
+        with open(
+            "scrape_soulflower.json",
+            "w",
+            encoding="utf-8"
+        ) as f:
+
+            json.dump(
+                products,
+                f,
+                ensure_ascii=False,
+                indent=2
+            )
 
         self.logger.info(
             "Soulflower scraper returned "
@@ -1304,12 +1840,16 @@ class SoulFlowerSpider(scrapy.Spider):
         )
 
         # ----------------------------------------------------
-        # Yield to Scrapy
+        # YIELD TO SCRAPY
         # ----------------------------------------------------
 
         for product in products:
 
-            # Final validation
+            # Final validation.
+            #
+            # Description is intentionally NOT required.
+            # It can be NULL in the database.
+
             if not product.get(
                 "image_link"
             ):
@@ -1317,11 +1857,6 @@ class SoulFlowerSpider(scrapy.Spider):
 
             if not product.get(
                 "product_link"
-            ):
-                continue
-
-            if not product.get(
-                "description"
             ):
                 continue
 

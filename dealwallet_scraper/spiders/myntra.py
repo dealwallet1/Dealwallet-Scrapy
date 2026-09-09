@@ -28,7 +28,7 @@ CATEGORIES = [
 ]
 
 CATEGORY_LABELS = {
-    "men-topwear": "Men Topwear",
+    "men-topwear": "Fashion & Lifestyle",
 }
 
 
@@ -400,7 +400,7 @@ def parse_listing_product(
             category,
             category
         ),
-        "timestamp": datetime.now(
+        "created_at": datetime.now(
     timezone(timedelta(hours=5, minutes=30))
 ).strftime("%Y-%m-%dT%H:%M:%S"),
     }

@@ -42,6 +42,7 @@ SCRAPYD_PROJECT = os.getenv(
 SCRAPYD_SPIDERS = [
     "myntra",
     "soul_flower",
+    "wiselife"
 ]
 
 
@@ -56,7 +57,7 @@ SCRAPYD_SPIDERS = [
 SCHEDULE_INTERVAL_SECONDS = int(
     os.getenv(
         "SCHEDULE_INTERVAL_SECONDS",
-        str(10 * 60),
+        str(20 * 60),
     )
 )
 
