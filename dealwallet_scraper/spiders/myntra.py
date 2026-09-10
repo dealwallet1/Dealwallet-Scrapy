@@ -14,23 +14,36 @@ from datetime import datetime, timezone, timedelta
 # CONFIGURATION
 # ============================================================
 
-BASE_URL =  "https://www.myntra.com/men-topwear"
+
+BASE_URL = "https://www.myntra.com"
+
+BASE_URLS = {"Fashion & Lifestyle": ["https://www.myntra.com/men-topwear", "https://www.myntra.com/women-topwear"],
+    "Bags": ["https://www.myntra.com/bags"],
+    "Computers & Accessories": ["https://www.myntra.com/computer-accessories"],
+    "Electronics": ["https://www.myntra.com/electronics"],
+    "Furnitures": ["https://www.myntra.com/furnitures"],
+    "Gym Equipments": ["https://www.myntra.com/gym-sports-accessories"],
+    "Home Appliances": ["https://www.myntra.com/home-appliences"],
+    "Home Decor": ["https://www.myntra.com/homedecor"],
+    "Makeup": ["https://www.myntra.com/makeup"],
+    "Mobile Accessories": ["https://www.myntra.com/mobile-accessories"],
+    "Shirts": ["https://www.myntra.com/shirts"],
+    "Sports": ["https://www.myntra.com/sports-equipments"],
+    "Beauty": ["https://www.myntra.com/personal-care"],
+    "Travel": ["https://www.myntra.com/travelling-trolley"],
+    "Toys & Games": ["https://www.myntra.com/toys"],
+
+}
+
 
 MAX_PAGES = 10
 PAGE_START = 1
 
-LISTING_PAGE_WAIT = 2.0
-DETAIL_PAGE_WAIT = 2.0
+LISTING_PAGE_WAIT = 0
+DETAIL_PAGE_WAIT = 0
 PAGE_TIMEOUT = 30000
 
-CATEGORIES = [
-    "men-topwear",
-]
-
-CATEGORY_LABELS = {
-    "men-topwear": "Fashion & Lifestyle",
-}
-
+CATEGORIES = list(BASE_URLS.keys())
 
 
 def normalize_text(text):
@@ -396,10 +409,7 @@ def parse_listing_product(
         "product_link": product_link,
         "organization_id": "Dealwallet",
         "store_id": "Myntra",
-        "categories_id": CATEGORY_LABELS.get(
-            category,
-            category
-        ),
+        "categories_id": category,
         "created_at": datetime.now(
     timezone(timedelta(hours=5, minutes=30))
 ).strftime("%Y-%m-%dT%H:%M:%S"),
@@ -456,6 +466,7 @@ def parse_detail_page(html):
 async def scrape_myntra_async():
 
     all_products = []
+    category_counts = {category: 0 for category in CATEGORIES}
 
     seen_products = set()
     seen_descriptions = set()
@@ -470,10 +481,7 @@ async def scrape_myntra_async():
 
         for category in CATEGORIES:
 
-            category_label = CATEGORY_LABELS.get(
-                category,
-                category
-            )
+            base_url = BASE_URLS[category][0]
 
             for page_number in range(
                 PAGE_START,
@@ -486,11 +494,17 @@ async def scrape_myntra_async():
 
                 if page_number == 1:
 
-                    listing_url = BASE_URL
+                    listing_url = base_url
 
                 else:
-                
-                    listing_url = f"{BASE_URL}?p={page_number}"
+
+                    separator = (
+                        "&" if "?" in base_url else "?"
+                    )
+
+                    listing_url = (
+                        f"{base_url}{separator}p={page_number}"
+                    )
 
                 logging.info(
                     "Scraping listing page: %s",
@@ -611,13 +625,11 @@ async def scrape_myntra_async():
                         product_key
                     )
 
-                    product["categories_id"] = (
-                        category_label
-                    )
-
                     all_products.append(
                         product
                     )
+
+                    category_counts[category] += 1
 
     # ========================================================
     # DETAIL PAGES
@@ -627,6 +639,19 @@ async def scrape_myntra_async():
         "Listing products collected: %s",
         len(all_products),
     )
+
+    logging.info("=" * 60)
+    logging.info("PRODUCT COUNT BY CATEGORY")
+    logging.info("=" * 60)
+
+    for category, count in category_counts.items():
+        logging.info(
+            "%s: %s products",
+            category,
+            count,
+        )
+
+    logging.info("=" * 60)
 
     async with AsyncWebCrawler(
         verbose=False
