@@ -36,6 +36,8 @@ RUN playwright install --with-deps chromium
 # Copy application
 COPY . .
 
+COPY scrapyd.conf /etc/scrapyd/scrapyd.conf
+
 # Scrapyd runtime directories
 RUN mkdir -p \
     /var/lib/scrapyd/logs \
