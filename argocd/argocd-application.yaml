@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+
+metadata:
+  name: dealwallet-scrapy
+  namespace: argocd
+
+spec:
+  project: dealwallet-scrapy
+
+  source:
+    repoURL: https://github.com/dealwallet1/Dealwallet-Scrapy.git
+    targetRevision: main
+    path: k8s
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+
+    syncOptions:
+      - CreateNamespace=true

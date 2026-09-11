@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: dealwallet-scrapyd
+
+spec:
+  type: LoadBalancer
+
+  selector:
+    app: dealwallet-scrapyd
+
+  ports:
+    - protocol: TCP
+      port: 4096
+      targetPort: 6800
