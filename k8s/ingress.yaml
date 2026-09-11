@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+
+metadata:
+  name: dealwallet-scrapyd
+
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    traefik.ingress.kubernetes.io/redirect-entry-point: https
+
+spec:
+  rules:
+    - host: scrapy.dealwallet.com
+
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+
+            backend:
+              service:
+                name: dealwallet-scrapyd
+                port:
+                  number: 6800
+
+  tls:
+    - hosts:
+        - scrapy.dealwallet.com
