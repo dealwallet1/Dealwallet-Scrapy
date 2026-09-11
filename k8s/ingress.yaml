@@ -21,7 +21,7 @@ spec:
               service:
                 name: dealwallet-scrapyd
                 port:
-                  number: 6800
+                  number: 4096
 
   tls:
     - hosts:
