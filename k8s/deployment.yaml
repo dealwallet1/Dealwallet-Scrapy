@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: dealwallet-scrapyd
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: dealwallet-scrapyd
+
+  template:
+    metadata:
+      labels:
+        app: dealwallet-scrapyd
+
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+
+      containers:
+        - name: dealwallet-scrapyd
+
+          image: ghcr.io/dealwallet1/dealwallet-scrapy:latest
+          imagePullPolicy: Always
+
+          ports:
+            - containerPort: 6800
+              protocol: TCP
+
+          envFrom:
+            - secretRef:
+                name: dealwallet-scrapy-secret
+
+          command:
+            - scrapyd
+
+          args:
+            - "--pidfile="
+
+          volumeMounts:
+            - name: dealwallet-scrapyd-storage
+              mountPath: /var/lib/scrapyd
+
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+
+      volumes:
+        - name: dealwallet-scrapyd-storage
+
+          persistentVolumeClaim:
+            claimName: dealwallet-scrapyd-pvc
+
+
+---
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: dealwallet-scheduler
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: dealwallet-scheduler
+
+  template:
+    metadata:
+      labels:
+        app: dealwallet-scheduler
+
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+
+      containers:
+        - name: dealwallet-scheduler
+
+          image: ghcr.io/dealwallet1/dealwallet-scrapy:latest
+          imagePullPolicy: Always
+
+          envFrom:
+            - secretRef:
+                name: dealwallet-scrapy-secret
+
+          command:
+            - python
+
+          args:
+            - scheduler.py
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
