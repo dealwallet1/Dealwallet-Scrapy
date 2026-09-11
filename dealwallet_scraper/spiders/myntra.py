@@ -559,6 +559,44 @@ async def scrape_myntra_async():
 
                 html = result.html
 
+                if html:
+                    debug_soup = BeautifulSoup(
+                        html,
+                        "html.parser"
+                    )
+
+                    logging.info(
+                        "HTML LENGTH: %s",
+                        len(html)
+                    )
+
+                    logging.info(
+                        "PRODUCT BASE COUNT: %s",
+                        len(
+                            debug_soup.select(
+                                "li.product-base"
+                            )
+                        )
+                    )
+
+                    logging.info(
+                        "FALLBACK PRODUCT COUNT: %s",
+                        len(
+                            debug_soup.select(
+                                ".product-base"
+                            )
+                        )
+                    )
+
+                    logging.info(
+                        "PAGE TITLE: %s",
+                        debug_soup.title.get_text(
+                            strip=True
+                        )
+                        if debug_soup.title
+                        else "NO TITLE"
+                    )
+
                 if not html:
 
                     logging.warning(
