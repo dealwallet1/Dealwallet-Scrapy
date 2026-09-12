@@ -83,17 +83,28 @@ jobs:
           grep "image:" k8s/deployment.yaml
 
       # --------------------------------------------------
-      # Commit Updated Manifest
+      # Commit & Push Updated Manifest
       # --------------------------------------------------
 
-      - name: Commit Updated Manifest
+      - name: Commit & Push Updated Manifest
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
 
           git add k8s/deployment.yaml
 
-          git diff --staged --quiet || git commit \
-            -m "Update image tag to ${{ steps.vars.outputs.sha_short }}"
+          if git diff --staged --quiet; then
+            echo "No deployment changes to commit"
+            exit 0
+          fi
 
-          git push origin ${{ github.ref_name }}
+          git commit -m "Update image tag to ${{ steps.vars.outputs.sha_short }}"
+
+          # Get latest remote changes
+          git fetch origin main
+
+          # Rebase our commit on latest main
+          git rebase origin/main
+
+          # Push rebased commit
+          git push origin HEAD:main
