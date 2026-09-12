@@ -1,9 +1,9 @@
 import logging
 import os
 from pathlib import Path
-from urllib.parse import quote
 
 import psycopg2
+import requests
 from dotenv import load_dotenv
 
 
@@ -63,35 +63,213 @@ DB_CATEGORY_TABLE = os.getenv(
 
 
 # ============================================================
-# AFFILIATE URL
+# CUELINKS CONFIGURATION
 # ============================================================
 
-def generate_affiliate_url(
-    product_link,
-    cid="237728",
-    subid="balu",
-):
+CUELINKS_API_KEY = os.getenv(
+    "CUELINKS_API_KEY"
+)
+
+CUELINKS_CHANNEL_ID = os.getenv(
+    "CUELINKS_CHANNEL_ID"
+)
+
+CUELINKS_CONVERT_URL = (
+    "https://developers.cuelinks.com/"
+    "pub_api/v3/links/convert"
+)
+
+CUELINKS_TIMEOUT = int(
+    os.getenv(
+        "CUELINKS_TIMEOUT",
+        "30",
+    )
+)
+
+
+# ============================================================
+# CUELINKS AFFILIATE URL
+# ============================================================
+
+def generate_affiliate_url(product_link):
     """
-    Generate affiliate URL from the original product URL.
+    Convert the original merchant product URL through
+    the Cuelinks Convert URL API.
+
+    The tracking_url returned by Cuelinks is stored
+    as affiliate_url.
     """
 
     if not product_link or product_link == "N/A":
+        logger.warning(
+            "Product link is missing. "
+            "Affiliate URL cannot be generated."
+        )
         return None
 
-    encoded_url = quote(
-        product_link,
-        safe="",
-    )
+    if not CUELINKS_API_KEY:
+        logger.error(
+            "CUELINKS_API_KEY is missing in .env."
+        )
+        return None
 
-    affiliate_url = (
-        f"https://linksredirect.com/?cid={cid}"
-        f"&subid={subid}"
-        f"&subid2=&subid3=&subid4=&subid5="
-        f"&source=api"
-        f"&url={encoded_url}"
-    )
+    headers = {
+        "Authorization": f"Token {CUELINKS_API_KEY}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
 
-    return affiliate_url
+    payload = {
+        "url": product_link,
+    }
+
+    if CUELINKS_CHANNEL_ID:
+        try:
+            payload["channel_id"] = int(
+                CUELINKS_CHANNEL_ID
+            )
+        except ValueError:
+            logger.warning(
+                "Invalid CUELINKS_CHANNEL_ID: %s",
+                CUELINKS_CHANNEL_ID,
+            )
+
+    try:
+
+        logger.info(
+            "CUELINKS CONVERSION REQUEST | URL: %s",
+            product_link,
+        )
+
+        response = requests.post(
+            CUELINKS_CONVERT_URL,
+            headers=headers,
+            json=payload,
+            timeout=CUELINKS_TIMEOUT,
+        )
+
+        response.raise_for_status()
+
+        response_data = response.json()
+
+        data = response_data.get(
+            "data",
+            {},
+        )
+
+        tracking_url = data.get(
+            "tracking_url"
+        )
+
+        affiliated = data.get(
+            "affiliated"
+        )
+
+        campaign = data.get(
+            "campaign"
+        )
+
+        if not tracking_url:
+
+            logger.error(
+                "CUELINKS CONVERSION FAILED | "
+                "No tracking_url returned | "
+                "Product URL: %s | Response: %s",
+                product_link,
+                response_data,
+            )
+
+            return None
+
+        logger.info(
+            "CUELINKS CONVERSION SUCCESS | "
+            "Affiliated: %s",
+            affiliated,
+        )
+
+        if campaign:
+
+            logger.info(
+                "CUELINKS CAMPAIGN | "
+                "ID: %s | Name: %s",
+                campaign.get("id"),
+                campaign.get("name"),
+            )
+
+        if affiliated is False:
+
+            logger.warning(
+                "CUELINKS LINK NOT AFFILIATED | "
+                "Product URL: %s",
+                product_link,
+            )
+
+            return None
+
+        return tracking_url
+
+    except requests.exceptions.Timeout:
+
+        logger.error(
+            "CUELINKS API TIMEOUT | URL: %s",
+            product_link,
+        )
+
+        return None
+
+    except requests.exceptions.HTTPError as exc:
+
+        response_text = ""
+
+        if exc.response is not None:
+
+            try:
+                response_text = exc.response.text
+            except Exception:
+                response_text = ""
+
+        logger.error(
+            "CUELINKS API HTTP ERROR | "
+            "URL: %s | Error: %s | Response: %s",
+            product_link,
+            exc,
+            response_text,
+        )
+
+        return None
+
+    except requests.exceptions.RequestException as exc:
+
+        logger.error(
+            "CUELINKS API REQUEST ERROR | "
+            "URL: %s | Error: %s",
+            product_link,
+            exc,
+        )
+
+        return None
+
+    except ValueError as exc:
+
+        logger.error(
+            "CUELINKS INVALID JSON RESPONSE | "
+            "URL: %s | Error: %s",
+            product_link,
+            exc,
+        )
+
+        return None
+
+    except Exception as exc:
+
+        logger.exception(
+            "CUELINKS CONVERSION ERROR | "
+            "URL: %s | Error: %s",
+            product_link,
+            exc,
+        )
+
+        return None
 
 
 # ============================================================
@@ -118,8 +296,9 @@ def get_connection():
         missing.append("DB_PASSWORD")
 
     if missing:
+
         raise RuntimeError(
-            f"Missing database configuration in .env: "
+            "Missing database configuration in .env: "
             f"{', '.join(missing)}"
         )
 
@@ -136,7 +315,10 @@ def get_connection():
 # LOOKUP ORGANIZATION UUID
 # ============================================================
 
-def get_organization_id(cursor, organization_name):
+def get_organization_id(
+    cursor,
+    organization_name,
+):
     """
     Find organization UUID using organization name.
     """
@@ -159,10 +341,12 @@ def get_organization_id(cursor, organization_name):
     result = cursor.fetchone()
 
     if not result:
+
         logger.error(
             "Organization not found: %s",
             organization_name,
         )
+
         return None
 
     return str(result[0])
@@ -172,7 +356,10 @@ def get_organization_id(cursor, organization_name):
 # LOOKUP STORE UUID
 # ============================================================
 
-def get_store_id(cursor, store_name):
+def get_store_id(
+    cursor,
+    store_name,
+):
     """
     Find store UUID using store name.
     """
@@ -195,10 +382,12 @@ def get_store_id(cursor, store_name):
     result = cursor.fetchone()
 
     if not result:
+
         logger.error(
             "Store not found: %s",
             store_name,
         )
+
         return None
 
     return str(result[0])
@@ -208,7 +397,10 @@ def get_store_id(cursor, store_name):
 # LOOKUP CATEGORY UUID
 # ============================================================
 
-def get_category_id(cursor, category_name):
+def get_category_id(
+    cursor,
+    category_name,
+):
     """
     Find category UUID using category name.
     """
@@ -231,10 +423,12 @@ def get_category_id(cursor, category_name):
     result = cursor.fetchone()
 
     if not result:
+
         logger.error(
             "Category not found: %s",
             category_name,
         )
+
         return None
 
     return str(result[0])
@@ -244,15 +438,21 @@ def get_category_id(cursor, category_name):
 # PREPARE PRODUCT
 # ============================================================
 
-def prepare_product(product):
+def prepare_product(product):       
     """
     Validate and prepare scraped product data.
+
+    The original product_link is converted through
+    Cuelinks and the returned tracking_url is stored
+    as affiliate_url.
     """
 
     if not product:
+
         logger.warning(
             "Empty product received. Product skipped."
         )
+
         return None
 
     required_fields = [
@@ -271,21 +471,41 @@ def prepare_product(product):
         value = product.get(field)
 
         if value is None or value == "":
+
             logger.warning(
                 "Required field '%s' is missing. "
                 "Product skipped: %s",
                 field,
-                product.get("name", "Unknown"),
+                product.get(
+                    "name",
+                    "Unknown",
+                ),
             )
+
             return None
 
-    # Generate affiliate URL.
-    product["affiliate_url"] = generate_affiliate_url(
+    # --------------------------------------------------------
+    # CUELINKS URL CONVERSION
+    # --------------------------------------------------------
+
+    affiliate_url = generate_affiliate_url(
         product.get("product_link")
     )
 
-    return product
+    product["affiliate_url"] = affiliate_url
 
+    if affiliate_url:
+        logger.info(
+            "AFFILIATE URL GENERATED | Product: %s",
+            product.get("name"),
+        )
+    else:
+        logger.info(
+            "NO AFFILIATE URL | Product: %s",
+            product.get("name"),
+        )
+
+    return product
 
 # ============================================================
 # FIND EXISTING PRODUCT
@@ -354,9 +574,7 @@ def insert_product(
     """
     Insert a new product.
 
-    The database automatically generates products.id.
-
-    RETURNING id gets the generated UUID.
+    PostgreSQL automatically generates products.id.
     """
 
     query = f'''
@@ -418,6 +636,7 @@ def insert_product(
     result = cursor.fetchone()
 
     if not result:
+
         raise RuntimeError(
             "Database did not return generated product UUID."
         )
@@ -491,8 +710,10 @@ def update_product(
     )
 
     if cursor.rowcount != 1:
+
         raise RuntimeError(
-            f"Product update failed. Product UUID: {product_id}"
+            f"Product update failed. "
+            f"Product UUID: {product_id}"
         )
 
     logger.info(
@@ -516,10 +737,6 @@ def insert_price_history(
 ):
     """
     Insert a complete snapshot of the product into price_history.
-
-    price_history.id is automatically generated by PostgreSQL.
-
-    price_history.product_id references products.id.
     """
 
     query = f'''
@@ -598,25 +815,23 @@ def send_to_database(product):
     Flow:
 
     1. Validate product.
-    2. Connect to PostgreSQL.
-    3. Resolve organization name -> UUID.
-    4. Resolve store name -> UUID.
-    5. Resolve category name -> UUID.
-    6. Check whether product already exists using:
-           store_id + product_link + name
-    7. If new:
+    2. Convert product URL through Cuelinks.
+    3. Connect to PostgreSQL.
+    4. Resolve organization.
+    5. Resolve store.
+    6. Resolve category.
+    7. Check existing product.
+    8. New product:
            INSERT products
-           DB generates products.id
            INSERT price_history
-    8. If existing:
+    9. Existing product:
            Compare price.
-           If price changed:
-               UPDATE products
-               INSERT price_history
-           If price did not change:
-               Do nothing.
-    9. Commit.
-    10. On error, rollback only this product.
+    10. Price changed:
+           UPDATE products
+           INSERT price_history
+    11. Price unchanged:
+           No update/history.
+    12. Commit.
     """
 
     product = prepare_product(product)
@@ -642,7 +857,7 @@ def send_to_database(product):
         cursor = connection.cursor()
 
         # ----------------------------------------------------
-        # RESOLVE ORGANIZATION
+        # ORGANIZATION
         # ----------------------------------------------------
 
         organization_id = get_organization_id(
@@ -651,16 +866,19 @@ def send_to_database(product):
         )
 
         if not organization_id:
+
             logger.warning(
                 "Product skipped because organization "
                 "lookup failed | Product: %s",
                 product_name,
             )
+
             connection.rollback()
+
             return False
 
         # ----------------------------------------------------
-        # RESOLVE STORE
+        # STORE
         # ----------------------------------------------------
 
         store_id = get_store_id(
@@ -669,16 +887,19 @@ def send_to_database(product):
         )
 
         if not store_id:
+
             logger.warning(
                 "Product skipped because store "
                 "lookup failed | Product: %s",
                 product_name,
             )
+
             connection.rollback()
+
             return False
 
         # ----------------------------------------------------
-        # RESOLVE CATEGORY
+        # CATEGORY
         # ----------------------------------------------------
 
         category_id = get_category_id(
@@ -687,12 +908,15 @@ def send_to_database(product):
         )
 
         if not category_id:
+
             logger.warning(
                 "Product skipped because category "
                 "lookup failed | Product: %s",
                 product_name,
             )
+
             connection.rollback()
+
             return False
 
         # ----------------------------------------------------
@@ -749,7 +973,9 @@ def send_to_database(product):
         # EXISTING PRODUCT
         # ====================================================
 
-        existing_product_id, existing_price = existing_product
+        existing_product_id, existing_price = (
+            existing_product
+        )
 
         current_price = product.get("price")
 
@@ -764,7 +990,7 @@ def send_to_database(product):
         )
 
         # ----------------------------------------------------
-        # PRICE HAS NOT CHANGED
+        # PRICE UNCHANGED
         # ----------------------------------------------------
 
         if existing_price == current_price:
@@ -783,7 +1009,7 @@ def send_to_database(product):
             return True
 
         # ----------------------------------------------------
-        # PRICE HAS CHANGED
+        # PRICE CHANGED
         # ----------------------------------------------------
 
         logger.info(
@@ -831,6 +1057,7 @@ def send_to_database(product):
         if connection:
 
             try:
+
                 connection.rollback()
 
                 logger.warning(
