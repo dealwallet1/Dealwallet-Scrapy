@@ -39,8 +39,8 @@ BASE_URLS = {"Fashion & Lifestyle": ["https://www.myntra.com/men-topwear", "http
 MAX_PAGES = 10
 PAGE_START = 1
 
-LISTING_PAGE_WAIT = 0
-DETAIL_PAGE_WAIT = 0
+LISTING_PAGE_WAIT = 1
+DETAIL_PAGE_WAIT = 1
 PAGE_TIMEOUT = 30000
 
 CATEGORIES = list(BASE_URLS.keys())
