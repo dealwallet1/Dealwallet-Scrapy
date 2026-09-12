@@ -1,222 +1,527 @@
-import os
-import time
-import requests
-import logging
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
-SCRAPYD_URL = os.getenv(
-    "SCRAPYD_URL",
-    "http://127.0.0.1:6800"
-).rstrip("/")
-
-SCRAPYD_PROJECT = os.getenv(
-    "SCRAPYD_PROJECT",
-    "dealwallet_scraper"
-)
-
-SPIDERS = [
-    "myntra",
-    "soul_flower",
-    "wiselife",
-]
-
-SCHEDULE_INTERVAL_SECONDS = int(
-    os.getenv("SCHEDULE_INTERVAL_SECONDS", "1200")
-)
-
-CHECK_INTERVAL_SECONDS = int(
-    os.getenv("CHECK_INTERVAL_SECONDS", "30")
-)
-
-
-def get_active_jobs():
-    """Return currently running and pending jobs."""
-
-    try:
-        response = requests.get(
-            f"{SCRAPYD_URL}/listjobs.json",
-            params={"project": SCRAPYD_PROJECT},
-            timeout=10
-        )
-
-        response.raise_for_status()
-
-        data = response.json()
-
-        running = data.get("running", [])
-        pending = data.get("pending", [])
-
-        logging.info(
-            "Scrapyd status: running=%d pending=%d",
-            len(running),
-            len(pending)
-        )
-
-        return running, pending
-
-    except Exception as exc:
-        logging.error("Failed to check Scrapyd jobs: %s", exc)
-
-        # Do NOT start jobs if we cannot determine the current state.
-        return None, None
-
-
-def schedule_spider(spider):
-    """Schedule one spider."""
-
-    try:
-        response = requests.post(
-            f"{SCRAPYD_URL}/schedule.json",
-            data={
-                "project": SCRAPYD_PROJECT,
-                "spider": spider,
-            },
-            timeout=10
-        )
-
-        response.raise_for_status()
-
-        data = response.json()
-
-        if data.get("status") == "ok":
-            job_id = data.get("jobid")
-            logging.info(
-                "Scheduled spider=%s jobid=%s",
-                spider,
-                job_id
-            )
-            return job_id
-
-        logging.error(
-            "Failed to schedule spider=%s response=%s",
-            spider,
-            data
-        )
-
-    except Exception as exc:
-        logging.error(
-            "Exception scheduling spider=%s: %s",
-            spider,
-            exc
-        )
-
-    return None
-
-
-def wait_until_no_active_jobs():
-    """Wait until there are no running/pending jobs."""
-
-    while True:
-        running, pending = get_active_jobs()
-
-        if running is None:
-            logging.warning(
-                "Cannot determine active jobs. Retrying in %d seconds.",
-                CHECK_INTERVAL_SECONDS
-            )
-            time.sleep(CHECK_INTERVAL_SECONDS)
-            continue
-
-        if not running and not pending:
-            logging.info("No active jobs found.")
-            return
-
-        logging.info(
-            "Existing jobs detected: running=%d pending=%d. "
-            "Waiting before starting a new batch.",
-            len(running),
-            len(pending)
-        )
-
-        time.sleep(CHECK_INTERVAL_SECONDS)
-
-
-def start_new_batch():
-    """Start exactly one batch containing all spiders."""
-
-    logging.info(
-        "Starting new batch: %s",
-        ", ".join(SPIDERS)
-    )
-
-    job_ids = []
-
-    for spider in SPIDERS:
-        job_id = schedule_spider(spider)
-
-        if job_id:
-            job_ids.append(job_id)
-
-    logging.info(
-        "Batch submitted: %d/%d spiders",
-        len(job_ids),
-        len(SPIDERS)
-    )
-
-    return job_ids
-
-
-def wait_for_batch_to_finish():
-    """Wait until all Scrapyd jobs finish."""
-
-    while True:
-        running, pending = get_active_jobs()
-
-        if running is None:
-            time.sleep(CHECK_INTERVAL_SECONDS)
-            continue
-
-        if not running and not pending:
-            logging.info("All jobs finished.")
-            return
-
-        logging.info(
-            "Batch still active: running=%d pending=%d",
-            len(running),
-            len(pending)
-        )
-
-        time.sleep(CHECK_INTERVAL_SECONDS)
-
-
-def main():
-
-    logging.info("========================================")
-    logging.info("DealWallet scheduler started")
-    logging.info("Scrapyd URL: %s", SCRAPYD_URL)
-    logging.info("Project: %s", SCRAPYD_PROJECT)
-    logging.info("Spiders: %s", ", ".join(SPIDERS))
-    logging.info(
-        "Interval: %d seconds (%.1f minutes)",
-        SCHEDULE_INTERVAL_SECONDS,
-        SCHEDULE_INTERVAL_SECONDS / 60
-    )
-    logging.info("========================================")
-
-    while True:
-
-        # Never start a new batch if another batch is active.
-        wait_until_no_active_jobs()
-
-        # Start exactly one batch.
-        start_new_batch()
-
-        # Wait until all jobs from the batch finish.
-        wait_for_batch_to_finish()
-
-        # Wait before the next batch.
-        logging.info(
-            "All spiders completed. "
-            "Waiting %d seconds before next batch.",
-            SCHEDULE_INTERVAL_SECONDS
-        )
-
-        time.sleep(SCHEDULE_INTERVAL_SECONDS)
-
-
-if __name__ == "__main__":
+import os 
+import sys 
+import time 
+import logging 
+import requests 
+from dotenv import load_dotenv 
+ 
+ 
+# ============================================================ 
+# LOAD ENVIRONMENT 
+# ============================================================ 
+ 
+load_dotenv() 
+ 
+ 
+# ============================================================ 
+# LOGGING 
+# ============================================================ 
+ 
+logging.basicConfig( 
+    level=os.getenv("LOG_LEVEL", "INFO").upper(), 
+    format="%(asctime)s [%(levelname)s] %(message)s", 
+) 
+ 
+logger = logging.getLogger(__name__) 
+ 
+ 
+# ============================================================ 
+# CONFIGURATION 
+# ============================================================ 
+ 
+# LOCAL: 
+#   http://127.0.0.1:6800 
+# 
+# KUBERNETES: 
+#   http://dealwallet-scrapyd:6800 
+# 
+# Set SCRAPYD_URL in the environment for Kubernetes. 
+# Local automatically uses 127.0.0.1:6800. 
+ 
+SCRAPYD_URL = os.getenv( 
+    "SCRAPYD_URL", 
+    "http://127.0.0.1:6800", 
+).rstrip("/") 
+ 
+ 
+SCRAPYD_PROJECT = os.getenv( 
+    "SCRAPYD_PROJECT", 
+    "dealwallet_scraper", 
+) 
+ 
+ 
+SCRAPYD_SPIDERS = [ 
+    "myntra", 
+    "soul_flower", 
+    "wiselife", 
+] 
+ 
+ 
+# ============================================================ 
+# INTERVAL 
+# ============================================================ 
+ 
+# Default = 20 minutes 
+# The next batch starts only AFTER the previous batch 
+# has completely finished, then waits this interval. 
+ 
+SCHEDULE_INTERVAL_SECONDS = int( 
+    os.getenv( 
+        "SCHEDULE_INTERVAL_SECONDS", 
+        str(20 * 60), 
+    ) 
+) 
+ 
+ 
+# ============================================================ 
+# SCRAPYD CHECK INTERVAL 
+# ============================================================ 
+ 
+# Check every 30 seconds while jobs are running. 
+ 
+CHECK_INTERVAL = int( 
+    os.getenv( 
+        "SCRAPYD_CHECK_INTERVAL", 
+        "30", 
+    ) 
+) 
+ 
+ 
+# ============================================================ 
+# SCRAPYD URLS 
+# ============================================================ 
+ 
+# If somebody provides: 
+# 
+# http://127.0.0.1:6800/schedule.json 
+# 
+# or: 
+# 
+# http://dealwallet-scrapyd:6800/schedule.json 
+# 
+# remove /schedule.json and build the URLs ourselves. 
+ 
+if SCRAPYD_URL.endswith("/schedule.json"): 
+    SCRAPYD_BASE_URL = SCRAPYD_URL[ 
+        :-len("/schedule.json") 
+    ] 
+else: 
+    SCRAPYD_BASE_URL = SCRAPYD_URL 
+ 
+ 
+SCHEDULE_URL = ( 
+    f"{SCRAPYD_BASE_URL}/schedule.json" 
+) 
+ 
+ 
+LISTJOBS_URL = ( 
+    f"{SCRAPYD_BASE_URL}/listjobs.json" 
+) 
+ 
+ 
+# ============================================================ 
+# GET ACTIVE JOBS 
+# ============================================================ 
+ 
+def get_active_jobs(): 
+    """ 
+    Return running and pending jobs from Scrapyd. 
+ 
+    Returns: 
+        (running, pending) 
+ 
+    If Scrapyd cannot be reached: 
+        (None, None) 
+    """ 
+ 
+    try: 
+ 
+        response = requests.get( 
+            LISTJOBS_URL, 
+            params={ 
+                "project": SCRAPYD_PROJECT, 
+            }, 
+            timeout=30, 
+        ) 
+ 
+        response.raise_for_status() 
+ 
+        data = response.json() 
+ 
+        running = data.get( 
+            "running", 
+            [], 
+        ) 
+ 
+        pending = data.get( 
+            "pending", 
+            [], 
+        ) 
+ 
+        return running, pending 
+ 
+    except Exception as exc: 
+ 
+        logger.error( 
+            "Failed to check Scrapyd jobs: %s", 
+            exc, 
+        ) 
+ 
+        # IMPORTANT: 
+        # Never schedule new jobs if Scrapyd status 
+        # cannot be verified. 
+        return None, None 
+ 
+ 
+# ============================================================ 
+# SCHEDULE ONE SPIDER 
+# ============================================================ 
+ 
+def schedule_spider(spider_name): 
+    """ 
+    Submit one spider to Scrapyd. 
+    """ 
+ 
+    payload = { 
+        "project": SCRAPYD_PROJECT, 
+        "spider": spider_name, 
+    } 
+ 
+    logger.info( 
+        "Scheduling spider: project=%s spider=%s", 
+        SCRAPYD_PROJECT, 
+        spider_name, 
+    ) 
+ 
+    logger.info( 
+        "Scrapyd schedule URL: %s", 
+        SCHEDULE_URL, 
+    ) 
+ 
+    try: 
+ 
+        response = requests.post( 
+            SCHEDULE_URL, 
+            data=payload, 
+            timeout=30, 
+        ) 
+ 
+        response.raise_for_status() 
+ 
+        try: 
+            result = response.json() 
+        except ValueError: 
+            result = response.text 
+ 
+        logger.info( 
+            "Scrapyd response: %s", 
+            result, 
+        ) 
+ 
+        if isinstance(result, dict): 
+ 
+            if result.get("status") == "ok": 
+ 
+                job_id = result.get( 
+                    "jobid" 
+                ) 
+ 
+                logger.info( 
+                    "Spider scheduled successfully. " 
+                    "Spider=%s Job ID=%s", 
+                    spider_name, 
+                    job_id, 
+                ) 
+ 
+                return job_id 
+ 
+            logger.error( 
+                "Scrapyd rejected spider %s: %s", 
+                spider_name, 
+                result, 
+            ) 
+ 
+            return None 
+ 
+        logger.error( 
+            "Unexpected Scrapyd response for %s: %s", 
+            spider_name, 
+            result, 
+        ) 
+ 
+        return None 
+ 
+    except requests.exceptions.RequestException as exc: 
+ 
+        logger.exception( 
+            "Failed to schedule spider %s: %s", 
+            spider_name, 
+            exc, 
+        ) 
+ 
+        return None 
+ 
+ 
+# ============================================================ 
+# WAIT UNTIL SCRAPYD IS EMPTY 
+# ============================================================ 
+ 
+def wait_until_no_active_jobs(): 
+    """ 
+    Wait until there are no running or pending jobs. 
+ 
+    This prevents duplicate batches. 
+    """ 
+ 
+    while True: 
+ 
+        running, pending = get_active_jobs() 
+ 
+        # Scrapyd cannot be reached. 
+        if running is None or pending is None: 
+ 
+            logger.warning( 
+                "Unable to verify Scrapyd status. " 
+                "Will retry without scheduling." 
+            ) 
+ 
+            time.sleep( 
+                CHECK_INTERVAL 
+            ) 
+ 
+            continue 
+ 
+        logger.info( 
+            "Scrapyd status: running=%s pending=%s", 
+            len(running), 
+            len(pending), 
+        ) 
+ 
+        # Existing jobs found. 
+        if running or pending: 
+ 
+            logger.info( 
+                "Existing jobs detected. " 
+                "Waiting before starting a new batch..." 
+            ) 
+ 
+            time.sleep( 
+                CHECK_INTERVAL 
+            ) 
+ 
+            continue 
+ 
+        logger.info( 
+            "No running or pending jobs found." 
+        ) 
+ 
+        return 
+ 
+ 
+# ============================================================ 
+# START NEW BATCH 
+# ============================================================ 
+ 
+def start_new_batch(): 
+    """ 
+    Submit all three spiders. 
+ 
+    Scrapyd max_proc=3 allows all three to run 
+    simultaneously. 
+    """ 
+ 
+    logger.info("=" * 60) 
+    logger.info("Starting new spider batch") 
+    logger.info("=" * 60) 
+ 
+    scheduled_jobs = [] 
+ 
+    for spider_name in SCRAPYD_SPIDERS: 
+ 
+        job_id = schedule_spider( 
+            spider_name 
+        ) 
+ 
+        if job_id: 
+ 
+            scheduled_jobs.append( 
+                job_id 
+            ) 
+ 
+    logger.info( 
+        "Batch submitted. Jobs scheduled: %s/%s", 
+        len(scheduled_jobs), 
+        len(SCRAPYD_SPIDERS), 
+    ) 
+ 
+    return scheduled_jobs 
+ 
+ 
+# ============================================================ 
+# WAIT FOR BATCH TO FINISH 
+# ============================================================ 
+ 
+def wait_for_batch_to_finish(): 
+    """ 
+    Wait until Scrapyd has no running or pending jobs. 
+    """ 
+ 
+    logger.info( 
+        "Waiting for current batch to finish..." 
+    ) 
+ 
+    while True: 
+ 
+        running, pending = get_active_jobs() 
+ 
+        if running is None or pending is None: 
+ 
+            logger.warning( 
+                "Unable to check batch status. " 
+                "Retrying..." 
+            ) 
+ 
+            time.sleep( 
+                CHECK_INTERVAL 
+            ) 
+ 
+            continue 
+ 
+        logger.info( 
+            "Current batch status: " 
+            "running=%s pending=%s", 
+            len(running), 
+            len(pending), 
+        ) 
+ 
+        # All jobs finished. 
+        if not running and not pending: 
+ 
+            logger.info( 
+                "All spiders completed." 
+            ) 
+ 
+            return 
+ 
+        time.sleep( 
+            CHECK_INTERVAL 
+        ) 
+ 
+ 
+# ============================================================ 
+# MAIN 
+# ============================================================ 
+ 
+def main(): 
+ 
+    logger.info("=" * 60) 
+    logger.info("DealWallet scheduler started") 
+    logger.info("=" * 60) 
+ 
+    logger.info( 
+        "Scrapyd base URL: %s", 
+        SCRAPYD_BASE_URL, 
+    ) 
+ 
+    logger.info( 
+        "Scrapyd schedule URL: %s", 
+        SCHEDULE_URL, 
+    ) 
+ 
+    logger.info( 
+        "Scrapyd list jobs URL: %s", 
+        LISTJOBS_URL, 
+    ) 
+ 
+    logger.info( 
+        "Project: %s", 
+        SCRAPYD_PROJECT, 
+    ) 
+ 
+    logger.info( 
+        "Spiders: %s", 
+        ", ".join(SCRAPYD_SPIDERS), 
+    ) 
+ 
+    logger.info( 
+        "Interval: %s seconds (%.1f minutes)", 
+        SCHEDULE_INTERVAL_SECONDS, 
+        SCHEDULE_INTERVAL_SECONDS / 60, 
+    ) 
+ 
+    logger.info( 
+        "Scrapyd check interval: %s seconds", 
+        CHECK_INTERVAL, 
+    ) 
+ 
+    # ======================================================== 
+    # CONTINUOUS LOOP 
+    # ======================================================== 
+ 
+    while True: 
+ 
+        # ---------------------------------------------------- 
+        # STEP 1 
+        # Check for old/running/pending jobs. 
+        # ---------------------------------------------------- 
+ 
+        logger.info( 
+            "Checking Scrapyd for existing jobs..." 
+        ) 
+ 
+        wait_until_no_active_jobs() 
+ 
+        # ---------------------------------------------------- 
+        # STEP 2 
+        # Start exactly one batch. 
+        # ---------------------------------------------------- 
+ 
+        scheduled_jobs = start_new_batch() 
+ 
+        # ---------------------------------------------------- 
+        # STEP 3 
+        # Wait for the batch. 
+        # ---------------------------------------------------- 
+ 
+        if scheduled_jobs: 
+ 
+            wait_for_batch_to_finish() 
+ 
+        else: 
+ 
+            logger.error( 
+                "No spiders were scheduled. " 
+                "Skipping batch wait." 
+            ) 
+ 
+        # ---------------------------------------------------- 
+        # STEP 4 
+        # Wait before next batch. 
+        # ---------------------------------------------------- 
+ 
+        logger.info( 
+            "Waiting %s seconds before next batch...", 
+            SCHEDULE_INTERVAL_SECONDS, 
+        ) 
+ 
+        try: 
+ 
+            time.sleep( 
+                SCHEDULE_INTERVAL_SECONDS 
+            ) 
+ 
+        except KeyboardInterrupt: 
+ 
+            logger.info( 
+                "Scheduler stopped by user." 
+            ) 
+ 
+            sys.exit(0) 
+ 
+ 
+# ============================================================ 
+# ENTRY POINT 
+# ============================================================ 
+ 
+if __name__ == "__main__": 
     main()
