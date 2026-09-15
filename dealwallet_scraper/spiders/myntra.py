@@ -7,7 +7,7 @@ from urllib.parse import urljoin
 import json
 import scrapy
 from bs4 import BeautifulSoup
-from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
+from crawl4ai import AsyncWebCrawler
 from datetime import datetime, timezone, timedelta
 
 # ============================================================
@@ -39,9 +39,11 @@ BASE_URLS = {"Fashion & Lifestyle": ["https://www.myntra.com/men-topwear", "http
 MAX_PAGES = 10
 PAGE_START = 1
 
-LISTING_PAGE_WAIT = 1
-DETAIL_PAGE_WAIT = 1
-PAGE_TIMEOUT = 30000
+LISTING_PAGE_WAIT = 3
+DETAIL_PAGE_WAIT = 2
+PAGE_TIMEOUT = 60000
+MAX_CRAWL_RETRIES = 2
+RETRY_DELAY = 10
 
 CATEGORIES = list(BASE_URLS.keys())
 
@@ -463,338 +465,155 @@ def parse_detail_page(html):
 # CRAWL4AI ASYNC SCRAPER
 # ============================================================
 
-async def scrape_myntra_async():
+async def open_myntra_page(crawler, url, page_type="page"):
+    """Open a Myntra page with retries and detailed Crawl4AI diagnostics."""
+    for attempt in range(1, MAX_CRAWL_RETRIES + 1):
+        try:
+            logging.info("Opening Myntra %s (attempt %s/%s): %s", page_type, attempt, MAX_CRAWL_RETRIES, url)
+            result = await crawler.arun(url=url)
+            logging.info("Crawl4AI result | type=%s | success=%s | url=%s", page_type, getattr(result, "success", None), getattr(result, "url", None))
+            if result.success:
+                html = result.html or ""
+                logging.info("Myntra %s HTML length: %s", page_type, len(html))
+                return result
+            logging.error("Myntra %s crawl unsuccessful | error=%s", page_type, getattr(result, "error_message", None))
+        except Exception as exc:
+            logging.exception("Myntra %s crawl exception on attempt %s/%s: %s", page_type, attempt, MAX_CRAWL_RETRIES, exc)
+        if attempt < MAX_CRAWL_RETRIES:
+            logging.info("Waiting %s seconds before retrying Myntra %s.", RETRY_DELAY, page_type)
+            await asyncio.sleep(RETRY_DELAY)
+    logging.error("Giving up Myntra %s after %s attempts: %s", page_type, MAX_CRAWL_RETRIES, url)
+    return None
 
+
+# ============================================================
+# CRAWL4AI ASYNC SCRAPER
+# ============================================================
+
+async def scrape_myntra_async():
     all_products = []
     category_counts = {category: 0 for category in CATEGORIES}
-
     seen_products = set()
     seen_descriptions = set()
 
-    # ========================================================
-    # LISTING PAGES
-    # ========================================================
+    logging.info("Myntra Crawl4AI: starting browser crawler.")
 
-    async with AsyncWebCrawler(
-        verbose=False
-    ) as crawler:
+    async with AsyncWebCrawler(verbose=True) as crawler:
+        # Same browser setup as the working WiseLife Crawl4AI scraper.
+        crawler.browser_config = {
+            "headless": True,
+            "javascript": True,
+        }
+        # Keep DOMContentLoaded for Myntra; the longer timeout and delay
+        # allow its product grid to render without waiting forever for networkidle.
+        crawler.crawler_run_config = {
+            "wait_until": "domcontentloaded",
+            "timeout": PAGE_TIMEOUT,
+            "delay_before_return_html": LISTING_PAGE_WAIT,
+        }
+
+        logging.info("Myntra browser config: %s", crawler.browser_config)
+        logging.info("Myntra run config: %s", crawler.crawler_run_config)
 
         for category in CATEGORIES:
-
             base_url = BASE_URLS[category][0]
+            category_start_count = len(all_products)
+            logging.info("=" * 60)
+            logging.info("Myntra category: %s", category)
+            logging.info("Base URL: %s", base_url)
+            logging.info("=" * 60)
 
-            for page_number in range(
-                PAGE_START,
-                PAGE_START + MAX_PAGES
-            ):
-
-                # ------------------------------------------------
-                # URL
-                # ------------------------------------------------
-
+            for page_number in range(PAGE_START, PAGE_START + MAX_PAGES):
                 if page_number == 1:
-
                     listing_url = base_url
-
                 else:
+                    separator = "&" if "?" in base_url else "?"
+                    listing_url = f"{base_url}{separator}p={page_number}"
 
-                    separator = (
-                        "&" if "?" in base_url else "?"
-                    )
-
-                    listing_url = (
-                        f"{base_url}{separator}p={page_number}"
-                    )
-
-                logging.info(
-                    "Scraping listing page: %s",
-                    listing_url,
-                )
-
-                # ------------------------------------------------
-                # Crawl4AI configuration
-                #
-                # IMPORTANT:
-                # Do NOT use wait_for with an integer.
-                # delay_before_return_html is the correct
-                # timing parameter for Crawl4AI 0.9.x.
-                # ------------------------------------------------
-
-                config = CrawlerRunConfig(
-                    wait_until="domcontentloaded",
-                    page_timeout=PAGE_TIMEOUT,
-                    delay_before_return_html=(
-                        LISTING_PAGE_WAIT
-                    ),
-                )
-
-                try:
-
-                    result = await crawler.arun(
-                        url=listing_url,
-                        config=config,
-                    )
-
-                except Exception as exc:
-
-                    logging.error(
-                        "Listing crawl failed: %s",
-                        exc,
-                    )
-
+                logging.info("Scraping Myntra listing page %s/%s: %s", page_number, PAGE_START + MAX_PAGES - 1, listing_url)
+                result = await open_myntra_page(crawler, listing_url, "listing")
+                if result is None:
                     continue
 
-                # ------------------------------------------------
-                # Validate crawl
-                # ------------------------------------------------
-
-                if not result.success:
-
-                    logging.error(
-                        "Listing crawl unsuccessful: %s",
-                        result.error_message,
-                    )
-
-                    continue
-
-                html = result.html
-
-                if html:
-                    debug_soup = BeautifulSoup(
-                        html,
-                        "html.parser"
-                    )
-
-                    logging.info(
-                        "HTML LENGTH: %s",
-                        len(html)
-                    )
-
-                    logging.info(
-                        "PRODUCT BASE COUNT: %s",
-                        len(
-                            debug_soup.select(
-                                "li.product-base"
-                            )
-                        )
-                    )
-
-                    logging.info(
-                        "FALLBACK PRODUCT COUNT: %s",
-                        len(
-                            debug_soup.select(
-                                ".product-base"
-                            )
-                        )
-                    )
-
-                    logging.info(
-                        "PAGE TITLE: %s",
-                        debug_soup.title.get_text(
-                            strip=True
-                        )
-                        if debug_soup.title
-                        else "NO TITLE"
-                    )
-
+                html = result.html or ""
                 if not html:
-
-                    logging.warning(
-                        "No HTML returned for listing page."
-                    )
-
+                    logging.warning("Myntra listing returned empty HTML: %s", listing_url)
                     continue
 
-                # ------------------------------------------------
-                # Parse HTML
-                # ------------------------------------------------
+                soup = BeautifulSoup(html, "html.parser")
+                li_count = len(soup.select("li.product-base"))
+                fallback_count = len(soup.select(".product-base"))
+                logging.info("Myntra listing diagnostics | HTML=%s | title=%s | li.product-base=%s | .product-base=%s", len(html), soup.title.get_text(strip=True) if soup.title else "NO TITLE", li_count, fallback_count)
 
-                soup = BeautifulSoup(
-                    html,
-                    "html.parser"
-                )
-
-                product_elements = soup.select(
-                    "li.product-base"
-                )
-
+                product_elements = soup.select("li.product-base") or soup.select(".product-base")
+                logging.info("Myntra products found on page %s: %s", page_number, len(product_elements))
                 if not product_elements:
+                    logging.warning("NO MYNTRA PRODUCTS FOUND | category=%s | page=%s | url=%s", category, page_number, listing_url)
+                    continue
 
-                    product_elements = soup.select(
-                        ".product-base"
-                    )
-
-                logging.info(
-                    "Products found: %s",
-                    len(product_elements),
-                )
-
-                # ------------------------------------------------
-                # Products
-                # ------------------------------------------------
-
+                page_new_products = 0
                 for product_element in product_elements:
-
-                    product = parse_listing_product(
-                        product_element,
-                        category
-                    )
-
-                    # Missing image / URL
+                    product = parse_listing_product(product_element, category)
                     if not product:
                         continue
-
-                    product_key = (
-                        product.get(
-                            "product_link"
-                        ),
-                        product.get(
-                            "name"
-                        ),
-                        product.get(
-                            "price"
-                        ),
-                    )
-
+                    product_key = (product.get("product_link"), product.get("name"), product.get("price"))
                     if product_key in seen_products:
                         continue
-
-                    seen_products.add(
-                        product_key
-                    )
-
-                    all_products.append(
-                        product
-                    )
-
+                    seen_products.add(product_key)
+                    all_products.append(product)
                     category_counts[category] += 1
+                    page_new_products += 1
 
-    # ========================================================
-    # DETAIL PAGES
-    # ========================================================
+                logging.info("Myntra page %s complete | new products=%s | total products=%s", page_number, page_new_products, len(all_products))
 
-    logging.info(
-        "Listing products collected: %s",
-        len(all_products),
-    )
+            logging.info("Myntra category complete | %s | products=%s", category, len(all_products) - category_start_count)
 
     logging.info("=" * 60)
-    logging.info("PRODUCT COUNT BY CATEGORY")
+    logging.info("Myntra listing phase complete. Products collected: %s", len(all_products))
     logging.info("=" * 60)
-
     for category, count in category_counts.items():
-        logging.info(
-            "%s: %s products",
-            category,
-            count,
-        )
+        logging.info("Myntra category count | %s: %s products", category, count)
 
-    logging.info("=" * 60)
+    if not all_products:
+        logging.error("Myntra Crawl4AI collected ZERO products during listing phase.")
+        return all_products
 
-    async with AsyncWebCrawler(
-        verbose=False
-    ) as crawler:
+    async with AsyncWebCrawler(verbose=True) as crawler:
+        crawler.browser_config = {
+            "headless": True,
+            "javascript": True,
+        }
+        crawler.crawler_run_config = {
+            "wait_until": "domcontentloaded",
+            "timeout": PAGE_TIMEOUT,
+            "delay_before_return_html": DETAIL_PAGE_WAIT,
+        }
 
-        for index, product in enumerate(
-            all_products,
-            start=1
-        ):
+        logging.info("Myntra detail browser config: %s", crawler.browser_config)
+        logging.info("Myntra detail run config: %s", crawler.crawler_run_config)
 
-            product_url = product.get(
-                "product_link"
-            )
-
+        for index, product in enumerate(all_products, start=1):
+            product_url = product.get("product_link")
             if not product_url:
                 continue
-
-            logging.info(
-                "Detail page %s/%s: %s",
-                index,
-                len(all_products),
-                product_url,
-            )
-
-            # ------------------------------------------------
-            # Detail page configuration
-            # ------------------------------------------------
-
-            config = CrawlerRunConfig(
-                wait_until="domcontentloaded",
-                page_timeout=PAGE_TIMEOUT,
-                delay_before_return_html=(
-                    DETAIL_PAGE_WAIT
-                ),
-            )
-
-            try:
-
-                result = await crawler.arun(
-                    url=product_url,
-                    config=config,
-                )
-
-            except Exception as exc:
-
-                logging.error(
-                    "Detail crawl failed: %s",
-                    exc,
-                )
-
+            logging.info("Myntra detail page %s/%s: %s", index, len(all_products), product_url)
+            result = await open_myntra_page(crawler, product_url, "detail")
+            if result is None:
                 product["description"] = None
-
                 continue
 
-            if not result.success:
-
-                logging.error(
-                    "Detail crawl unsuccessful: %s",
-                    result.error_message,
-                )
-
-                product["description"] = None
-
-                continue
-
-            # ------------------------------------------------
-            # Description
-            # ------------------------------------------------
-
-            description = parse_detail_page(
-                result.html
-            )
-
+            description = parse_detail_page(result.html)
             if description:
-
-                description_key = (
-                    normalize_text(
-                        description
-                    ).lower()
-                )
-
-                # Don't assign duplicate descriptions.
+                description_key = normalize_text(description).lower()
                 if description_key in seen_descriptions:
-
                     product["description"] = None
-
                 else:
-
-                    seen_descriptions.add(
-                        description_key
-                    )
-
-                    product["description"] = (
-                        description
-                    )
-
+                    seen_descriptions.add(description_key)
+                    product["description"] = description
             else:
-
                 product["description"] = None
 
-    logging.info(
-        "Myntra Crawl4AI completed. Total products: %s",
-        len(all_products),
-    )
-
+    logging.info("Myntra Crawl4AI completed. Total products: %s", len(all_products))
     return all_products
 
 
@@ -811,16 +630,21 @@ def run_myntra_scraper():
     )
 
     logging.info("Myntra Crawl4AI process started.")
+    logging.info("Python: %s", sys.version)
+    logging.info("Platform: %s", sys.platform)
 
     if sys.platform.startswith("win"):
-
         asyncio.set_event_loop_policy(
             asyncio.WindowsProactorEventLoopPolicy()
         )
 
-    return asyncio.run(
-        scrape_myntra_async()
-    )
+    try:
+        products = asyncio.run(scrape_myntra_async())
+        logging.info("Myntra Crawl4AI process finished. Products returned: %s", len(products))
+        return products
+    except Exception:
+        logging.exception("Myntra Crawl4AI process failed.")
+        raise
 
 
 # ============================================================
@@ -829,7 +653,7 @@ def run_myntra_scraper():
 
 class MyntraSpider(scrapy.Spider):
 
-    name = "myntra"
+    name = "myntra_products"
 
     allowed_domains = [
         "myntra.com",
@@ -859,14 +683,21 @@ class MyntraSpider(scrapy.Spider):
 
         loop = asyncio.get_running_loop()
 
-        with ProcessPoolExecutor(
-            max_workers=1
-        ) as executor:
+        try:
+            with ProcessPoolExecutor(
+                max_workers=1
+            ) as executor:
 
-            products = await loop.run_in_executor(
-                executor,
-                run_myntra_scraper
+                products = await loop.run_in_executor(
+                    executor,
+                    run_myntra_scraper
+                )
+        except Exception as exc:
+            self.logger.exception(
+                "Myntra Crawl4AI worker failed: %s",
+                exc,
             )
+            return
 
         # ----------------------------------------------------
         # Results
