@@ -1,6 +1,7 @@
 import logging
 import os
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import psycopg2
 import requests
@@ -85,6 +86,75 @@ CUELINKS_TIMEOUT = int(
         "30",
     )
 )
+
+
+# ============================================================
+# PRODUCT URL CLEANING
+# ============================================================
+
+# Tracking/navigation parameters that should not affect
+# product identity.
+UNUSED_URL_PARAMS = {
+    "_pos",
+    "_fid",
+    "_ss",
+}
+
+
+def clean_product_url(product_url):
+    """Remove unused query parameters and reconstruct the URL."""
+
+    if not product_url or product_url == "N/A":
+        return product_url
+
+    try:
+        parsed = urlsplit(product_url)
+
+        if not parsed.query:
+            return product_url
+
+        parameters = parse_qsl(
+            parsed.query,
+            keep_blank_values=True,
+        )
+
+        cleaned_parameters = [
+            (key, value)
+            for key, value in parameters
+            if key.lower() not in UNUSED_URL_PARAMS
+        ]
+
+        cleaned_query = urlencode(
+            cleaned_parameters,
+            doseq=True,
+        )
+
+        cleaned_url = urlunsplit(
+            (
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                cleaned_query,
+                parsed.fragment,
+            )
+        )
+
+        if cleaned_url != product_url:
+            logger.info(
+                "PRODUCT URL CLEANED | Original: %s | Clean: %s",
+                product_url,
+                cleaned_url,
+            )
+
+        return cleaned_url
+
+    except Exception as exc:
+        logger.warning(
+            "PRODUCT URL CLEANING FAILED | URL: %s | Error: %s",
+            product_url,
+            exc,
+        )
+        return product_url
 
 
 # ============================================================
@@ -485,11 +555,26 @@ def prepare_product(product):
             return None
 
     # --------------------------------------------------------
+    # PRODUCT URL CLEANING
+    # --------------------------------------------------------
+
+    original_product_link = product.get("product_link")
+
+    cleaned_product_link = clean_product_url(
+        original_product_link
+    )
+
+    # Use the reconstructed URL for product matching and DB storage.
+    product["product_link"] = cleaned_product_link
+
+    # --------------------------------------------------------
     # CUELINKS URL CONVERSION
     # --------------------------------------------------------
 
+    # Keep the existing Cuelinks behavior by sending the
+    # original scraped merchant URL to Cuelinks.
     affiliate_url = generate_affiliate_url(
-        product.get("product_link")
+        original_product_link
     )
 
     product["affiliate_url"] = affiliate_url
