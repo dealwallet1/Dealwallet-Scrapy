@@ -10,7 +10,6 @@ from datetime import datetime, timezone, timedelta
 from urllib.parse import urljoin
 
 import scrapy
-
 from bs4 import BeautifulSoup
 from crawl4ai import AsyncWebCrawler
 
@@ -37,18 +36,15 @@ if sys.platform == "win32":
 # ============================================================
 
 BASE_URLS = {
-
     "Fashion & Lifestyle": [
+        "https://www.zivame.com/sleepwear-nightwear.html",
+        "https://www.zivame.com/loungewear.html?&trksrc=navbar&trkid=l1",
 
-        "https://www.zivame.com/sleepwear-nightwear.html?topsku=ZI64ZG-Vapor%20Blue,ZI64Z1-DeauvilleMauve,ZI654A-Moonlight%20Jade,ZI6549-Lavender%20Fog,ZI6518-TrueNavy,ZI654B-Moonlight%20Jade,ZI6549-Fig,ZI64NN-Heirloom%20Lilac,ZI6549-Cerulean,ZI650M-Orchid%20Tint,ZI654D-Wisteria,ZI654C-Icemelt,ZI64V1-Wetweather,ZI64VH-Jazzy,ZI64VH-Peachparfai,ZI6518-CrystalRose,ZI650N-Heavenly%20Pink,ZI654C-Wisteria,ZI651A-AlmostAqua,ZI64N5-Salt%20Air,ZI651A-MistGreen,ZI650J-Raw%20Sienna,ZI64SJ-Fawn,ZI651A-NantucketBreeze,ZI650M-Heavenly%20Pink,ZI654B-Moonlight%20Jade,ZI651A-CrytalRose,ZI64N6-Soybee&trksrc=navbar&trkid=l1",
-
-        #  "https://www.zivame.com/loungewear.html?&trksrc=navbar&trkid=l1",
-
-        # "https://www.zivame.com/winter-must-haves.html?category=nightwear&topsku=ZI64Q8-Silver%20Peony,ZI64Q4-Medieval%20Blue,ZI652V-Black%20Beauty&trksrc=navbar&trkid=l1"
+        "https://www.zivame.com/winter-must-haves.html?category=nightwear&topsku=ZI64Q8-Silver%20Peony,ZI64Q4-Medieval%20Blue,ZI652V-Black%20Beauty&trksrc=navbar&trkid=l1"
 
     ],
-
 }
+
 
 # ============================================================
 # SETTINGS
@@ -57,8 +53,6 @@ BASE_URLS = {
 MAX_PAGES = 5
 
 JSON_FILE = "scrape_zivame.json"
-
-
 
 
 # ============================================================
@@ -75,9 +69,7 @@ logging.basicConfig(
 # PRICE PARSER
 # ============================================================
 
-def parse_price_to_float(
-    price_str
-):
+def parse_price_to_float(price_str):
 
     if not price_str:
         return None
@@ -95,11 +87,8 @@ def parse_price_to_float(
         return None
 
     try:
-
         return int(clean)
-
     except ValueError:
-
         return None
 
 
@@ -107,16 +96,12 @@ def parse_price_to_float(
 # CLEAN PRICE
 # ============================================================
 
-def clean_price(
-    price
-):
+def clean_price(price):
 
     if price is None:
         return "N/A"
 
-    price = str(
-        price
-    )
+    price = str(price)
 
     clean = (
         price
@@ -126,11 +111,7 @@ def clean_price(
         .strip()
     )
 
-    return (
-        clean
-        if clean
-        else "N/A"
-    )
+    return clean if clean else "N/A"
 
 
 # ============================================================
@@ -139,7 +120,7 @@ def clean_price(
 
 def calculate_discount(
     original_price,
-    price
+    price,
 ):
 
     original_val = parse_price_to_float(
@@ -177,9 +158,7 @@ def calculate_discount(
 # NORMALIZE TEXT
 # ============================================================
 
-def normalize_text(
-    text
-):
+def normalize_text(text):
 
     if not text:
         return ""
@@ -195,14 +174,13 @@ def normalize_text(
 
 async def get_product_description(
     crawler,
-    product_link
+    product_link,
 ):
 
     if (
         not product_link
         or product_link == "N/A"
     ):
-
         return "N/A"
 
     try:
@@ -213,7 +191,9 @@ async def get_product_description(
         )
 
         detail_page = await crawler.arun(
-            url=product_link
+            url=product_link,
+            wait_until="networkidle",
+            timeout=60000,
         )
 
         if not detail_page.success:
@@ -349,7 +329,6 @@ async def get_product_description(
             )
 
             if text:
-
                 descriptions.append(
                     text
                 )
@@ -360,11 +339,9 @@ async def get_product_description(
 
         if descriptions:
 
-            description = ", ".join(
+            return ", ".join(
                 descriptions
             )
-
-            return description
 
         return "N/A"
 
@@ -399,9 +376,9 @@ async def scrape_zivame():
 
     category_counts = {}
 
-    # --------------------------------------------------------
-    # START CRAWLER
-    # --------------------------------------------------------
+    # ========================================================
+    # CATEGORY LOOP
+    # ========================================================
 
     for category, urls in BASE_URLS.items():
 
@@ -419,9 +396,9 @@ async def scrape_zivame():
             "=" * 70
         )
 
-        # =================================================
+        # ====================================================
         # URL LOOP
-        # =================================================
+        # ====================================================
 
         for url_index, base_url in enumerate(
             urls,
@@ -449,779 +426,815 @@ async def scrape_zivame():
             )
 
             # =================================================
-            # PAGINATION
+            # START CRAWLER
             # =================================================
 
-            # =================================================
-            # FRESH CRAWLER FOR THIS URL
-            # =================================================
+            try:
 
-            async with AsyncWebCrawler(
-                verbose=True
-            ) as crawler:
+                async with AsyncWebCrawler(
+                    verbose=True
+                ) as crawler:
 
-                # ====================================================
-                # BROWSER CONFIG
-                # ====================================================
+                    # =============================================
+                    # PAGINATION
+                    # =============================================
 
-                crawler.browser_config = {
+                    while page_num <= MAX_PAGES:
 
-                    "headless": True,
+                        # -----------------------------------------
+                        # CLEAN PAGINATION URL
+                        # -----------------------------------------
 
-                    "javascript": True,
-
-                    "user_agent": (
-                        "Mozilla/5.0 "
-                        "(Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 "
-                        "(KHTML, like Gecko) "
-                        "Chrome/131.0.0.0 "
-                        "Safari/537.36"
-                    ),
-                }
-
-                # ====================================================
-                # CRAWLER CONFIG
-                # ====================================================
-
-                crawler.crawler_run_config = {
-
-                    "wait_until": "networkidle",
-                    "timeout": 60000,
-                    "delay": 5000,
-                    "wait_for": {
-                        "selector":
-                            "article.ProductCard_card__xnckO",
-                        "timeout":
-                            30000,
-                    },
-                }
-
-                while page_num <= MAX_PAGES:
-
-                    # -------------------------------------------------
-                    # PAGINATION URL
-                    # -------------------------------------------------
-
-                    separator = (
-                        "&"
-                        if "?" in base_url
-                        else "?"
-                    )
-
-                    url = (
-                        f"{base_url}"
-                        f"{separator}"
-                        f"page={page_num}"
-                    )
-
-                    print(
-                        "\n" + "-" * 70
-                    )
-
-                    print(
-                        f"Category : {category}"
-                    )
-
-                    print(
-                        f"URL      : {url_index}/{len(urls)}"
-                    )
-
-                    print(
-                        f"Page     : {page_num}"
-                    )
-
-                    print(
-                        f"URL      : {url}"
-                    )
-
-                    print(
-                        "-" * 70
-                    )
-
-                    # =================================================
-                    # CRAWL CATEGORY PAGE
-                    # =================================================
-
-                    try:
-
-                        page = await crawler.arun(
-                            url=url
+                        separator = (
+                            "&"
+                            if "?" in base_url
+                            else "?"
                         )
 
-                    except Exception as exc:
+                        url = (
+                            f"{base_url}"
+                            f"{separator}"
+                            f"page={page_num}"
+                        )
 
                         print(
-                            f"[ERROR] Crawler error "
-                            f"on page {page_num}: "
-                            f"{exc}"
+                            "\n" + "-" * 70
                         )
-
-                        break
-
-                    # =================================================
-                    # CHECK SUCCESS
-                    # =================================================
-
-                    if not page.success:
 
                         print(
-                            f"[ERROR] Failed to crawl "
-                            f"page {page_num}"
+                            f"Category : {category}"
                         )
-
-                        break
-
-                    # =================================================
-                    # PARSE HTML
-                    # =================================================
-
-                    soup = BeautifulSoup(
-                        page.html,
-                        "html.parser",
-                    )
-
-                    # =================================================
-                    # PRODUCT CARDS
-                    # =================================================
-
-                    product_cards = soup.select(
-                        "article.ProductCard_card__xnckO"
-                    )
-
-                    print(
-                        f"Products found on page "
-                        f"{page_num}: "
-                        f"{len(product_cards)}"
-                    )
-
-                    # =================================================
-                    # NO PRODUCTS
-                    # =================================================
-
-                    if not product_cards:
 
                         print(
-                            "[WARNING] No product cards found. "
-                            "Stopping pagination."
+                            f"URL      : "
+                            f"{url_index}/{len(urls)}"
                         )
 
-                        break
+                        print(
+                            f"Page     : {page_num}"
+                        )
 
-                    # =================================================
-                    # PRODUCT LOOP
-                    # =================================================
+                        print(
+                            f"URL      : {url}"
+                        )
 
-                    for card_index, card in enumerate(
-                        product_cards,
-                        start=1,
-                    ):
+                        print(
+                            "-" * 70
+                        )
+
+                        # =============================================
+                        # CRAWL CATEGORY PAGE
+                        # =============================================
 
                         try:
 
-                            # =========================================
-                            # PRODUCT ID
-                            # =========================================
-
-                            product_id = card.get(
-                                "data-product-id",
-                                "",
-                            ).strip()
-
-                            # =========================================
-                            # SKU
-                            # =========================================
-
-                            sku = card.get(
-                                "data-sku",
-                                "",
-                            ).strip()
-
-                            # =========================================
-                            # PRODUCT NAME
-                            # =========================================
-
-                            name = card.get(
-                                "data-name",
-                                "",
-                            ).strip()
-
-                            # -----------------------------------------
-                            # FALLBACK NAME
-                            # -----------------------------------------
-
-                            if not name:
-
-                                name_tag = (
-                                    card.select_one(
-                                        "a.ProductCard_name__ZkOcu"
-                                    )
-                                )
-
-                                if name_tag:
-
-                                    name = (
-                                        name_tag
-                                        .get_text(
-                                            strip=True
-                                        )
-                                    )
-
-                                else:
-
-                                    name = "N/A"
-
-                            name = normalize_text(
-                                name
-                            )
-
-                            # =========================================
-                            # PRODUCT LINK
-                            # =========================================
-
-                            link_tag = (
-                                card.select_one(
-                                    "a.ProductCard_name__ZkOcu"
-                                )
-                            )
-
-                            if (
-                                link_tag
-                                and link_tag.get("href")
-                            ):
-
-                                product_link = urljoin(
-                                    base_url,
-                                    link_tag.get(
-                                        "href"
-                                    ),
-                                )
-
-                            else:
-
-                                purl = card.get(
-                                    "data-purl"
-                                )
-
-                                if purl:
-
-                                    product_link = urljoin(
-                                        base_url,
-                                        purl,
-                                    )
-
-                                else:
-
-                                    product_link = "N/A"
-
-                            # =========================================
-                            # DUPLICATE KEY
-                            # =========================================
-
-                            unique_key = (
-                                product_id
-                                or product_link
-                                or name.lower()
-                            )
-
-                            if (
-                                unique_key
-                                in seen_product_ids
-                                or product_link
-                                in seen_links
-                            ):
-
-                                print(
-                                    f"[SKIP] Duplicate skipped: "
-                                    f"{name}"
-                                )
-
-                                continue
-
-                            # =========================================
-                            # CURRENT PRICE
-                            # =========================================
-
-                            price = card.get(
-                                "data-specialprice"
-                            )
-
-                            # -----------------------------------------
-                            # FALLBACK PRICE
-                            # -----------------------------------------
-
-                            if not price:
-
-                                price_tag = (
-                                    card.select_one(
-                                        "span.ProductCard_price__7yDPv"
-                                    )
-                                )
-
-                                if price_tag:
-
-                                    price = (
-                                        price_tag
-                                        .get_text(
-                                            strip=True
-                                        )
-                                    )
-
-                            price = clean_price(
-                                price
-                            )
-
-                            # =========================================
-                            # ORIGINAL PRICE
-                            # =========================================
-
-                            original_price = card.get(
-                                "data-price"
-                            )
-
-                            # -----------------------------------------
-                            # FALLBACK MRP
-                            # -----------------------------------------
-
-                            if not original_price:
-
-                                original_price_tag = (
-                                    card.select_one(
-                                        "span.ProductCard_mrp__tAO8J"
-                                    )
-                                )
-
-                                if original_price_tag:
-
-                                    original_price = (
-                                        original_price_tag
-                                        .get_text(
-                                            strip=True
-                                        )
-                                    )
-
-                            original_price = clean_price(
-                                original_price
-                            )
-
-                            # =========================================
-                            # SAME PRICE CHECK
-                            # =========================================
-
-                            price_val = (
-                                parse_price_to_float(
-                                    price
-                                )
-                            )
-
-                            original_val = (
-                                parse_price_to_float(
-                                    original_price
-                                )
-                            )
-
-                            if (
-                                price_val
-                                and original_val
-                                and price_val == original_val
-                            ):
-
-                                original_price = ""
-
-                            # =========================================
-                            # DISCOUNT
-                            # =========================================
-
-                            discount_tag = (
-                                card.select_one(
-                                    "span.ProductCard_discount__jJc10"
-                                )
-                            )
-
-                            if discount_tag:
-
-                                discount = (
-                                    discount_tag
-                                    .get_text(
-                                        strip=True
-                                    )
-                                )
-
-                                discount = (
-                                    discount
-                                    if "%"
-                                    in discount
-                                    else (
-                                        f"{discount}"
-                                        f"% OFF"
-                                    )
-                                )
-
-                            else:
-
-                                discount = (
-                                    calculate_discount(
-                                        original_price,
-                                        price,
-                                    )
-                                )
-
-                            # =========================================
-                            # IMAGE
-                            # =========================================
-
-                            img_tag = (
-                                card.select_one(
-                                    "img.ProductCard_image__EmM6A"
-                                )
-                            )
-
-                            if img_tag:
-
-                                src = (
-                                    img_tag.get(
-                                        "src"
-                                    )
-                                    or img_tag.get(
-                                        "data-src"
-                                    )
-                                    or img_tag.get(
-                                        "data-srcset"
-                                    )
-                                )
-
-                                if src:
-
-                                    image_link = urljoin(
-                                        base_url,
-                                        src,
-                                    )
-
-                                else:
-
-                                    image_link = "N/A"
-
-                            else:
-
-                                image_link = "N/A"
-
-                            # =========================================
-                            # RATING
-                            # =========================================
-
-                            rating = card.get(
-                                "data-rating",
-                                "",
-                            ).strip()
-
-                            # -----------------------------------------
-                            # FALLBACK RATING
-                            # -----------------------------------------
-
-                            if not rating:
-
-                                rating_tag = (
-                                    card.select_one(
-                                        "span.ProductCard_ratingVal__l2VBz"
-                                    )
-                                )
-
-                                if rating_tag:
-
-                                    rating = (
-                                        rating_tag
-                                        .get_text(
-                                            strip=True
-                                        )
-                                    )
-
-                            rating = (
-                                normalize_text(
-                                    rating
-                                )
-                                if rating
-                                else "N/A"
-                            )
-
-                            # =========================================
-                            # VALIDATION
-                            # =========================================
-
-                            if name == "N/A":
-
-                                print(
-                                    "[WARNING] Skipping product "
-                                    "without name"
-                                )
-
-                                continue
-
-                            if price == "N/A":
-
-                                print(
-                                    f"[WARNING] Skipping {name}: "
-                                    f"price unavailable"
-                                )
-
-                                continue
-
-                            if image_link == "N/A":
-
-                                print(
-                                    f"[WARNING] Skipping {name}: "
-                                    f"image unavailable"
-                                )
-
-                                continue
-
-                            if product_link == "N/A":
-
-                                print(
-                                    f"[WARNING] Skipping {name}: "
-                                    f"URL unavailable"
-                                )
-
-                                continue
-
-                            # =========================================
-                            # PRODUCT DETAIL DESCRIPTION
-                            # =========================================
-
-                            description = (
-                                await get_product_description(
-                                    crawler,
-                                    product_link,
-                                )
-                            )
-
-                            # =========================================
-                            # TIMESTAMP
-                            # =========================================
-
-                            timestamp = datetime.now(
-                                timezone(
-                                    timedelta(
-                                        hours=5,
-                                        minutes=30,
-                                    )
-                                )
-                            ).strftime(
-                                "%Y-%m-%dT%H:%M:%S"
-                            )
-
-                            # =========================================
-                            # PRODUCT DATA
-                            # =========================================
-
-                            # =========================================
-                            # DATA TYPE CONVERSION
-                            # =========================================
-
-                            price_value = parse_price_to_float(
-                                price
-                            )
-
-                            original_price_value = (
-                                parse_price_to_float(
-                                    original_price
-                                )
-                                if original_price
-                                else None
-                            )
-
-                            discount_value = None
-
-                            if discount and discount != "N/A":
-                                discount_match = re.search(
-                                    r"(\d+(?:\.\d+)?)",
-                                    str(discount),
-                                )
-
-                                if discount_match:
-                                    discount_value = int(
-                                        float(
-                                            discount_match.group(1)
-                                        )
-                                    )
-
-                            rating_value = None
-
-                            if rating and rating != "N/A":
-                                rating_match = re.search(
-                                    r"(\d+(?:\.\d+)?)",
-                                    str(rating),
-                                )
-
-                                if rating_match:
-                                    rating_value = float(
-                                        rating_match.group(1)
-                                    )
-
-                            # =========================================
-                            # PRODUCT DATA
-                            # =========================================
-
-                            product_data = {
-                                "name":
-                                    str(name),
-
-                                "price":
-                                    price_value,
-
-                                "currency":
-                                    "₹",
-
-                                "original_price":
-                                    original_price_value,
-
-                                "discount":
-                                    discount_value,
-
-                                "ratings":
-                                    rating_value,
-
-                                "description":
-                                str(name)
-                                if not description or description == "N/A"
-                                else str(description),
-
-                                "image_link":
-                                    str(image_link),
-
-                                "product_link":
-                                    str(product_link),
-
-                                "organization_id":
-                                    "Dealwallet",
-
-                                "store_id":
-                                    "Zivame",
-
-                                "categories_id":
-                                    str(category),
-
-                                "created_at":
-                                    timestamp,
-
-                                "affiliate_url":
-                                    None,
-                            }
-
-                            # =========================================
-                            # SAVE
-                            # =========================================
-
-                            results.append(
-                                product_data
-                            )
-
-                            category_results.append(
-                                product_data
-                            )
-
-                            url_products += 1
-
-                            # =========================================
-                            # MARK SEEN
-                            # =========================================
-
-                            if product_id:
-
-                                seen_product_ids.add(
-                                    product_id
-                                )
-
-                            if product_link:
-
-                                seen_links.add(
-                                    product_link
-                                )
-
-                            # =========================================
-                            # PRINT
-                            # =========================================
-
-                            print(
-                                f"\n[SUCCESS] PRODUCT "
-                                f"{len(results)}"
-                            )
-
-                            print(
-                                f"   Name        : "
-                                f"{name}"
-                            )
-
-                            print(
-                                f"   Price       : "
-                                f"₹{price}"
-                            )
-
-                            print(
-                                f"   MRP         : "
-                                f"₹{original_price}"
-                            )
-
-                            print(
-                                f"   Discount    : "
-                                f"{discount}"
-                            )
-
-                            print(
-                                f"   Rating      : "
-                                f"{rating}"
-                            )
-
-                            print(
-                                f"   Description : "
-                                f"{description[:200]}"
-                                if description
-                                and description != "N/A"
-                                else
-                                "   Description : N/A"
-                            )
-
-                            print(
-                                f"   URL         : "
-                                f"{product_link}"
+                            page = await crawler.arun(
+                                url=url,
+                                wait_until="networkidle",
+                                timeout=60000,
+                                delay=2000,
                             )
 
                         except Exception as exc:
 
                             print(
-                                f"[ERROR] Error parsing "
-                                f"product #{card_index}: "
+                                f"[ERROR] Crawler error "
+                                f"on page {page_num}: "
                                 f"{exc}"
                             )
 
-                    # =================================================
-                    # PAGE COMPLETE
-                    # =================================================
+                            break
 
-                    print(
-                        f"\n[PAGE] Page {page_num} completed"
-                    )
+                        # =============================================
+                        # CHECK SUCCESS
+                        # =============================================
 
-                    print(
-                        f"   Products on page: "
-                        f"{len(product_cards)}"
-                    )
+                        if not page.success:
 
-                    print(
-                        f"   New products: "
-                        f"{url_products}"
-                    )
+                            print(
+                                f"[ERROR] Failed to crawl "
+                                f"page {page_num}"
+                            )
 
-                    # =================================================
-                    # NEXT PAGE
-                    # =================================================
+                            break
 
-                    page_num += 1
+                        # =============================================
+                        # PARSE HTML
+                        # =============================================
 
-                # =================================================
+                        html = page.html or ""
+
+                        soup = BeautifulSoup(
+                            html,
+                            "html.parser",
+                        )
+
+                        # =============================================
+                        # DEBUG
+                        # =============================================
+
+                        print(
+                            f"[DEBUG] Runtime HTML length: "
+                            f"{len(html)}"
+                        )
+
+                        product_cards = soup.select(
+                            "article.ProductCard_card__xnckO"
+                        )
+
+                        print(
+                            f"[DEBUG] Product cards in "
+                            f"runtime HTML: "
+                            f"{len(product_cards)}"
+                        )
+
+                        
+
+                        # =============================================
+                        # NO PRODUCTS
+                        # =============================================
+
+                        if not product_cards:
+
+                            print(
+                                "[WARNING] No product cards found."
+                            )
+
+                            print(
+                                "[WARNING] Stopping pagination."
+                            )
+
+                            break
+
+                        # =============================================
+                        # PRODUCT LOOP
+                        # =============================================
+
+                        new_products_this_page = 0
+
+                        for card_index, card in enumerate(
+                            product_cards,
+                            start=1,
+                        ):
+
+                            try:
+
+                                # =====================================
+                                # PRODUCT ID
+                                # =====================================
+
+                                product_id = (
+                                    card.get(
+                                        "data-product-id",
+                                        "",
+                                    ).strip()
+                                )
+
+                                # =====================================
+                                # SKU
+                                # =====================================
+
+                                sku = (
+                                    card.get(
+                                        "data-sku",
+                                        "",
+                                    ).strip()
+                                )
+
+                                # =====================================
+                                # PRODUCT NAME
+                                # =====================================
+
+                                name = (
+                                    card.get(
+                                        "data-name",
+                                        "",
+                                    ).strip()
+                                )
+
+                                if not name:
+
+                                    name_tag = (
+                                        card.select_one(
+                                            "a.ProductCard_name__ZkOcu"
+                                        )
+                                    )
+
+                                    if name_tag:
+
+                                        name = (
+                                            name_tag.get_text(
+                                                strip=True
+                                            )
+                                        )
+
+                                    else:
+
+                                        name = "N/A"
+
+                                name = normalize_text(
+                                    name
+                                )
+
+                                # =====================================
+                                # PRODUCT LINK
+                                # =====================================
+
+                                link_tag = (
+                                    card.select_one(
+                                        "a.ProductCard_name__ZkOcu"
+                                    )
+                                )
+
+                                if (
+                                    link_tag
+                                    and link_tag.get("href")
+                                ):
+
+                                    product_link = urljoin(
+                                        "https://www.zivame.com",
+                                        link_tag.get("href"),
+                                    )
+
+                                else:
+
+                                    purl = card.get(
+                                        "data-purl"
+                                    )
+
+                                    if purl:
+
+                                        product_link = urljoin(
+                                            "https://www.zivame.com/",
+                                            purl,
+                                        )
+
+                                    else:
+
+                                        product_link = "N/A"
+
+                                # =====================================
+                                # DUPLICATE
+                                # =====================================
+
+                                unique_key = (
+                                    product_id
+                                    or product_link
+                                    or name.lower()
+                                )
+
+                                if (
+                                    unique_key
+                                    in seen_product_ids
+                                    or product_link
+                                    in seen_links
+                                ):
+
+                                    print(
+                                        f"[SKIP] Duplicate skipped: "
+                                        f"{name}"
+                                    )
+
+                                    continue
+
+                                # =====================================
+                                # CURRENT PRICE
+                                # =====================================
+
+                                price = card.get(
+                                    "data-specialprice"
+                                )
+
+                                if not price:
+
+                                    price_tag = (
+                                        card.select_one(
+                                            "span.ProductCard_price__7yDPv"
+                                        )
+                                    )
+
+                                    if price_tag:
+
+                                        price = (
+                                            price_tag.get_text(
+                                                strip=True
+                                            )
+                                        )
+
+                                price = clean_price(
+                                    price
+                                )
+
+                                # =====================================
+                                # ORIGINAL PRICE
+                                # =====================================
+
+                                original_price = card.get(
+                                    "data-price"
+                                )
+
+                                if not original_price:
+
+                                    original_price_tag = (
+                                        card.select_one(
+                                            "span.ProductCard_mrp__tAO8J"
+                                        )
+                                    )
+
+                                    if original_price_tag:
+
+                                        original_price = (
+                                            original_price_tag.get_text(
+                                                strip=True
+                                            )
+                                        )
+
+                                original_price = clean_price(
+                                    original_price
+                                )
+
+                                # =====================================
+                                # SAME PRICE CHECK
+                                # =====================================
+
+                                price_val = (
+                                    parse_price_to_float(
+                                        price
+                                    )
+                                )
+
+                                original_val = (
+                                    parse_price_to_float(
+                                        original_price
+                                    )
+                                )
+
+                                if (
+                                    price_val
+                                    and original_val
+                                    and price_val == original_val
+                                ):
+
+                                    original_price = ""
+
+                                # =====================================
+                                # DISCOUNT
+                                # =====================================
+
+                                discount_tag = (
+                                    card.select_one(
+                                        "span.ProductCard_discount__jJc10"
+                                    )
+                                )
+
+                                if discount_tag:
+
+                                    discount = (
+                                        discount_tag.get_text(
+                                            strip=True
+                                        )
+                                    )
+
+                                    if "%" not in discount:
+
+                                        discount = (
+                                            f"{discount}% OFF"
+                                        )
+
+                                else:
+
+                                    discount = (
+                                        calculate_discount(
+                                            original_price,
+                                            price,
+                                        )
+                                    )
+
+                                # =====================================
+                                # IMAGE
+                                # =====================================
+
+                                img_tag = (
+                                    card.select_one(
+                                        "img.ProductCard_image__EmM6A"
+                                    )
+                                )
+
+                                if img_tag:
+
+                                    src = (
+                                        img_tag.get(
+                                            "src"
+                                        )
+                                        or img_tag.get(
+                                            "data-src"
+                                        )
+                                        or img_tag.get(
+                                            "data-srcset"
+                                        )
+                                    )
+
+                                    if src:
+
+                                        if "," in src:
+
+                                            src = (
+                                                src.split(
+                                                    ","
+                                                )[0]
+                                                .strip()
+                                                .split(
+                                                    " "
+                                                )[0]
+                                            )
+
+                                        image_link = urljoin(
+                                            "https://www.zivame.com",
+                                            src,
+                                        )
+
+                                    else:
+
+                                        image_link = "N/A"
+
+                                else:
+
+                                    image_link = "N/A"
+
+                                # =====================================
+                                # RATING
+                                # =====================================
+
+                                rating = (
+                                    card.get(
+                                        "data-rating",
+                                        "",
+                                    ).strip()
+                                )
+
+                                if not rating:
+
+                                    rating_tag = (
+                                        card.select_one(
+                                            "span.ProductCard_ratingVal__l2VBz"
+                                        )
+                                    )
+
+                                    if rating_tag:
+
+                                        rating = (
+                                            rating_tag.get_text(
+                                                strip=True
+                                            )
+                                        )
+
+                                rating = (
+                                    normalize_text(
+                                        rating
+                                    )
+                                    if rating
+                                    else "N/A"
+                                )
+
+                                # =====================================
+                                # VALIDATION
+                                # =====================================
+
+                                if name == "N/A":
+
+                                    print(
+                                        "[WARNING] Skipping product "
+                                        "without name"
+                                    )
+
+                                    continue
+
+                                if price == "N/A":
+
+                                    print(
+                                        f"[WARNING] Skipping {name}: "
+                                        f"price unavailable"
+                                    )
+
+                                    continue
+
+                                if image_link == "N/A":
+
+                                    print(
+                                        f"[WARNING] Skipping {name}: "
+                                        f"image unavailable"
+                                    )
+
+                                    continue
+
+                                if product_link == "N/A":
+
+                                    print(
+                                        f"[WARNING] Skipping {name}: "
+                                        f"URL unavailable"
+                                    )
+
+                                    continue
+
+                                # =====================================
+                                # DESCRIPTION
+                                # =====================================
+
+                                description = (
+                                    await get_product_description(
+                                        crawler,
+                                        product_link,
+                                    )
+                                )
+
+                                # =====================================
+                                # TIMESTAMP
+                                # =====================================
+
+                                timestamp = datetime.now(
+                                    timezone(
+                                        timedelta(
+                                            hours=5,
+                                            minutes=30,
+                                        )
+                                    )
+                                ).strftime(
+                                    "%Y-%m-%dT%H:%M:%S"
+                                )
+
+                                # =====================================
+                                # DATA TYPES
+                                # =====================================
+
+                                price_value = (
+                                    parse_price_to_float(
+                                        price
+                                    )
+                                )
+
+                                original_price_value = (
+                                    parse_price_to_float(
+                                        original_price
+                                    )
+                                    if original_price
+                                    else None
+                                )
+
+                                discount_value = None
+
+                                if (
+                                    discount
+                                    and discount != "N/A"
+                                ):
+
+                                    discount_match = re.search(
+                                        r"(\d+(?:\.\d+)?)",
+                                        str(discount),
+                                    )
+
+                                    if discount_match:
+
+                                        discount_value = int(
+                                            float(
+                                                discount_match.group(1)
+                                            )
+                                        )
+
+                                rating_value = None
+
+                                if (
+                                    rating
+                                    and rating != "N/A"
+                                ):
+
+                                    rating_match = re.search(
+                                        r"(\d+(?:\.\d+)?)",
+                                        str(rating),
+                                    )
+
+                                    if rating_match:
+
+                                        rating_value = float(
+                                            rating_match.group(1)
+                                        )
+
+                                # =====================================
+                                # PRODUCT DATA
+                                # =====================================
+
+                                product_data = {
+
+                                    "name":
+                                        str(name),
+
+                                    "price":
+                                        price_value,
+
+                                    "currency":
+                                        "₹",
+
+                                    "original_price":
+                                        original_price_value,
+
+                                    "discount":
+                                        discount_value,
+
+                                    "ratings":
+                                        rating_value,
+
+                                    "description":
+                                        (
+                                            str(name)
+                                            if (
+                                                not description
+                                                or description == "N/A"
+                                            )
+                                            else str(description)
+                                        ),
+
+                                    "image_link":
+                                        str(image_link),
+
+                                    "product_link":
+                                        str(product_link),
+
+                                    "organization_id":
+                                        "Dealwallet",
+
+                                    "store_id":
+                                        "Zivame",
+
+                                    "categories_id":
+                                        str(category),
+
+                                    "created_at":
+                                        timestamp,
+
+                                    "affiliate_url":
+                                        None,
+                                }
+
+                                # =====================================
+                                # SAVE
+                                # =====================================
+
+                                results.append(
+                                    product_data
+                                )
+
+                                category_results.append(
+                                    product_data
+                                )
+
+                                url_products += 1
+
+                                new_products_this_page += 1
+
+                                # =====================================
+                                # MARK SEEN
+                                # =====================================
+
+                                if product_id:
+
+                                    seen_product_ids.add(
+                                        product_id
+                                    )
+
+                                if product_link:
+
+                                    seen_links.add(
+                                        product_link
+                                    )
+
+                                # =====================================
+                                # PRINT
+                                # =====================================
+
+                                print(
+                                    f"\n[SUCCESS] PRODUCT "
+                                    f"{len(results)}"
+                                )
+
+                                print(
+                                    f"   Product ID : "
+                                    f"{product_id or 'N/A'}"
+                                )
+
+                                print(
+                                    f"   SKU        : "
+                                    f"{sku or 'N/A'}"
+                                )
+
+                                print(
+                                    f"   Name       : "
+                                    f"{name}"
+                                )
+
+                                print(
+                                    f"   Price      : "
+                                    f"₹{price}"
+                                )
+
+                                print(
+                                    f"   MRP        : "
+                                    f"₹{original_price}"
+                                )
+
+                                print(
+                                    f"   Discount   : "
+                                    f"{discount}"
+                                )
+
+                                print(
+                                    f"   Rating     : "
+                                    f"{rating}"
+                                )
+
+                                if (
+                                    description
+                                    and description != "N/A"
+                                ):
+
+                                    print(
+                                        f"   Description: "
+                                        f"{description[:200]}"
+                                    )
+
+                                else:
+
+                                    print(
+                                        "   Description: N/A"
+                                    )
+
+                                print(
+                                    f"   Image      : "
+                                    f"{image_link}"
+                                )
+
+                                print(
+                                    f"   URL        : "
+                                    f"{product_link}"
+                                )
+
+                            except Exception as exc:
+
+                                print(
+                                    f"[ERROR] Error parsing "
+                                    f"product #{card_index}: "
+                                    f"{exc}"
+                                )
+
+                        # =============================================
+                        # PAGE COMPLETE
+                        # =============================================
+
+                        print(
+                            f"\n[PAGE] Page {page_num} completed"
+                        )
+
+                        print(
+                            f"   Product cards: "
+                            f"{len(product_cards)}"
+                        )
+
+                        print(
+                            f"   New products: "
+                            f"{new_products_this_page}"
+                        )
+
+                        # =============================================
+                        # STOP IF NOTHING NEW
+                        # =============================================
+
+                        if new_products_this_page == 0:
+
+                            print(
+                                "[INFO] No new products found."
+                            )
+
+                            print(
+                                "[INFO] Stopping pagination."
+                            )
+
+                            break
+
+                        # =============================================
+                        # NEXT PAGE
+                        # =============================================
+
+                        page_num += 1
+
+            except Exception as exc:
+
                 print(
-                    "Fresh Crawl4AI session completed for this URL."
+                    f"[ERROR] Crawl4AI session failed: {exc}"
                 )
 
+                logging.exception(
+                    "Zivame crawler session failed."
+                )
+
+            # =================================================
             # URL SUMMARY
             # =================================================
 
@@ -1242,9 +1255,9 @@ async def scrape_zivame():
                 "-" * 70
             )
 
-        # =================================================
+        # =====================================================
         # CATEGORY COUNT
-        # =================================================
+        # =====================================================
 
         category_counts[category] = len(
             category_results
@@ -1269,7 +1282,7 @@ async def scrape_zivame():
             "=" * 70
         )
 
-# ========================================================
+    # ========================================================
     # FINAL RESULT
     # ========================================================
 
@@ -1335,14 +1348,17 @@ async def scrape_zivame():
 
 def run_zivame_scraper():
 
-    # --------------------------------------------------------
-    # FORCE UTF-8 AGAIN INSIDE CHILD PROCESS
-    # --------------------------------------------------------
-
     if sys.platform == "win32":
+
         try:
-            sys.stdout.reconfigure(encoding="utf-8")
-            sys.stderr.reconfigure(encoding="utf-8")
+            sys.stdout.reconfigure(
+                encoding="utf-8"
+            )
+
+            sys.stderr.reconfigure(
+                encoding="utf-8"
+            )
+
         except (AttributeError, ValueError):
             pass
 
@@ -1357,10 +1373,6 @@ def run_zivame_scraper():
         force=True,
     )
 
-    # --------------------------------------------------------
-    # WINDOWS EVENT LOOP
-    # --------------------------------------------------------
-
     if sys.platform == "win32":
 
         try:
@@ -1370,7 +1382,6 @@ def run_zivame_scraper():
             )
 
         except AttributeError:
-
             pass
 
     logging.info(
@@ -1467,7 +1478,7 @@ class ZivameSpider(
             )
 
         # ----------------------------------------------------
-        # SAVE SCRAPY JSON
+        # SAVE JSON
         # ----------------------------------------------------
 
         with open(
@@ -1497,25 +1508,21 @@ class ZivameSpider(
             if not product.get(
                 "name"
             ):
-
                 continue
 
             if not product.get(
                 "price"
             ):
-
                 continue
 
             if not product.get(
                 "product_link"
             ):
-
                 continue
 
             if not product.get(
                 "image_link"
             ):
-
                 continue
 
             yield product
