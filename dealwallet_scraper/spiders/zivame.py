@@ -488,7 +488,7 @@ async def scrape_zivame():
 
                     "wait_until": "networkidle",
                     "timeout": 60000,
-                    "delay": 2000,
+                    "delay": 5000,
                     "wait_for": {
                         "selector":
                             "article.ProductCard_card__xnckO",
