@@ -52,9 +52,10 @@ SCRAPYD_PROJECT = os.getenv(
  
 SCRAPYD_SPIDERS = [ 
     # "myntra_products", 
-    "soul_flower", 
-    "wiselife", 
-    "yardley"
+    # "soul_flower", 
+    # "wiselife", 
+    # "yardley",
+    "zivame"
     # "myntra_cat",
 ] 
  
