@@ -57,7 +57,8 @@ SCRAPYD_SPIDERS = [
     "yardley",
     "zivame" ,
     "zigly",
-    "abhishti"
+    "abhishti",
+    "zingavita"
     # "myntra_cat",
 ] 
  
