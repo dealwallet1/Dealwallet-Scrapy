@@ -26,7 +26,8 @@ logger = logging.getLogger(__name__)
 
 BASE_URLS = {
     "Pet Essentials": [
-        "https://zigly.com/collections/dog-food",    
+        "https://zigly.com/collections/dog-food", 
+        "https://zigly.com/collections/cat-food",   
     ],
 }
 
@@ -36,9 +37,9 @@ MAX_PRODUCTS_PER_CATEGORY = 1000
 
 JSON_FILE = "scrape_zigly.json"
 
-CRAWLER_TIMEOUT = 60000
-CRAWLER_DELAY = 2000
-WAIT_TIMEOUT = 30000
+CRAWLER_TIMEOUT = 30000
+CRAWLER_DELAY = 500
+WAIT_TIMEOUT = 10000
 
 
 # ============================================================
