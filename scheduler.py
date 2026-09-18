@@ -55,8 +55,8 @@ SCRAPYD_SPIDERS = [
    "soul_flower", 
     "wiselife", 
     "yardley",
-    "zivame" 
-    "zigly"
+    "zivame" ,
+    "zigly",
     # "myntra_cat",
 ] 
  
