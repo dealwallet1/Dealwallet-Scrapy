@@ -59,6 +59,7 @@ SCRAPYD_SPIDERS = [
     "zigly",
     "abhishti",
     "zingavita",
+    "amydus"
 # "flipkart",
     # "myntra_cat",
 ] 
