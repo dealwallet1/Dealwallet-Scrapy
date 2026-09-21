@@ -13,7 +13,7 @@ from dealwallet_scraper.price_history import (
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 AFFILIATE_JSON_FILE = (
-    PROJECT_ROOT / "scrape_affiliate_urls.json"
+    PROJECT_ROOT / "scrape_affiliate_urls1.json"
 )
 
 
