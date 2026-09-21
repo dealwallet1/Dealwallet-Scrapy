@@ -58,7 +58,7 @@ class DealwalletScraperPipeline:
         # DB INSERTION
         # --------------------------------------------------------
 
-        send_to_database(product)
+        # send_to_database(product)
 
         return item
 
