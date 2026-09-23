@@ -628,7 +628,6 @@ def find_existing_product(
         query,
         (
             store_id,
-            product_link,
             product_name,
         ),
     )
@@ -1010,7 +1009,6 @@ def send_to_database(product):
         existing_product = find_existing_product(
             cursor,
             store_id,
-            product.get("product_link"),
             product.get("name"),
         )
 
