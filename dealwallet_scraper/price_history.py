@@ -599,13 +599,12 @@ def prepare_product(product):
 def find_existing_product(
     cursor,
     store_id,
-    product_link,
     product_name,
 ):
     """
     Find an existing product using:
 
-        store_id + product_link + name
+        store_id  + name
 
     Returns:
         (product_id, existing_price)
