@@ -347,7 +347,7 @@ async def parse_product_card(crawler, card, category):
             "image_link": image_link,
             "product_link": product_link,
             "organization_id": "Dealwallet",
-            "store_id": "Buywow",
+            "store_id": "BuyWow",
             "categories_id": category,
         }
 
