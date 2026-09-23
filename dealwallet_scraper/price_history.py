@@ -620,7 +620,6 @@ def find_existing_product(
             price
         FROM "{DB_SCHEMA}"."{DB_PRODUCTS_TABLE}"
         WHERE store_id = %s
-          AND product_link = %s
           AND name = %s
         LIMIT 1
     '''

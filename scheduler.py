@@ -61,7 +61,7 @@ SCRAPYD_SPIDERS = [
     "zingavita",
     "amydus",
     "buywow",
-# "flipkart",
+    "flipkart",
     # "myntra_cat",
 ] 
  
