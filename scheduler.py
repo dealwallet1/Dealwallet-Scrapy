@@ -63,7 +63,8 @@ SCRAPYD_SPIDERS = [
     "amydus",
     "buywow",
     "flipkart",
-    "world_of_asaya"
+    "world_of_asaya",
+    "beneude"
     
 ] 
  
