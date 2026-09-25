@@ -5,7 +5,7 @@ import re
 import sys
 from concurrent.futures import ProcessPoolExecutor
 from urllib.parse import urljoin
-
+from datetime import datetime, timezone, timedelta
 import scrapy
 from bs4 import BeautifulSoup
 from crawl4ai import AsyncWebCrawler
@@ -416,6 +416,9 @@ async def scrape_world_of_asaya_async():
                             # --------------------------------------
                             # PRODUCT DATA
                             # --------------------------------------
+                            timestamp = datetime.now(
+                                            timezone(timedelta(hours=5, minutes=30))
+                                        ).strftime("%Y-%m-%dT%H:%M:%S")
 
                             product_data = {
                                 "name": name,
@@ -430,6 +433,7 @@ async def scrape_world_of_asaya_async():
                                 "organization_id": "Dealwallet",
                                 "store_id": "World of Asaya",
                                 "categories_id": category,
+                                "created_at": timestamp,
                             }
 
                             results.append(product_data)

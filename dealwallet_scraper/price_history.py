@@ -1,3 +1,4 @@
+import atexit
 import logging
 import os
 from pathlib import Path
@@ -87,6 +88,66 @@ CUELINKS_TIMEOUT = int(
     )
 )
 
+# Stores/domains confirmed as NOT affiliated by Cuelinks.
+# Once a store is confirmed as affiliated=False, we skip
+# all future Cuelinks API requests for that store during
+# this process run.
+NON_AFFILIATED_STORES = set()
+
+
+# ============================================================
+# DATABASE PROCESSING COUNTERS
+# ============================================================
+
+DATABASE_STATS = {
+    "total": 0,
+    "updated": 0,
+    "unchanged": 0,
+    "new": 0,
+    "failed": 0,
+}
+
+
+def record_database_result(status, product_name="Unknown"):
+    """Record and log the cumulative database processing result."""
+
+    if status not in ("updated", "unchanged", "new", "failed"):
+        return
+
+    DATABASE_STATS[status] += 1
+    DATABASE_STATS["total"] += 1
+
+    logger.info(
+        "DATABASE PROGRESS | Total: %s | Updated: %s | Unchanged: %s | New: %s | Failed: %s | Last: %s | Product: %s",
+        DATABASE_STATS["total"],
+        DATABASE_STATS["updated"],
+        DATABASE_STATS["unchanged"],
+        DATABASE_STATS["new"],
+        DATABASE_STATS["failed"],
+        status.upper(),
+        product_name,
+    )
+
+
+def log_database_summary():
+    """Log the final cumulative database processing summary."""
+
+    if DATABASE_STATS["total"] == 0:
+        return
+
+    logger.info("=" * 80)
+    logger.info("FLIPKART DATABASE PROCESSING SUMMARY")
+    logger.info("=" * 80)
+    logger.info("Total processed : %s", DATABASE_STATS["total"])
+    logger.info("Updated         : %s", DATABASE_STATS["updated"])
+    logger.info("Unchanged       : %s", DATABASE_STATS["unchanged"])
+    logger.info("New             : %s", DATABASE_STATS["new"])
+    logger.info("Failed          : %s", DATABASE_STATS["failed"])
+    logger.info("=" * 80)
+
+
+atexit.register(log_database_summary)
+
 
 # ============================================================
 # PRODUCT URL CLEANING
@@ -161,6 +222,28 @@ def clean_product_url(product_url):
 # CUELINKS AFFILIATE URL
 # ============================================================
 
+def get_store_domain(product_link):
+    """Return normalized merchant domain from a product URL."""
+    if not product_link or product_link == "N/A":
+        return None
+
+    try:
+        hostname = urlsplit(product_link).hostname
+
+        if not hostname:
+            return None
+
+        hostname = hostname.lower().strip()
+
+        if hostname.startswith("www."):
+            hostname = hostname[4:]
+
+        return hostname
+
+    except Exception:
+        return None
+
+
 def generate_affiliate_url(product_link):
     """
     Convert the original merchant product URL through
@@ -174,6 +257,19 @@ def generate_affiliate_url(product_link):
         logger.warning(
             "Product link is missing. "
             "Affiliate URL cannot be generated."
+        )
+        return None
+
+    store_domain = get_store_domain(product_link)
+
+    # If Cuelinks already confirmed this entire store/domain
+    # as non-affiliated, do not make another API request.
+    if store_domain in NON_AFFILIATED_STORES:
+        logger.info(
+            "CUELINKS SKIPPED | Store already confirmed as "
+            "NOT AFFILIATED | Store: %s | URL: %s",
+            store_domain,
+            product_link,
         )
         return None
 
@@ -238,6 +334,18 @@ def generate_affiliate_url(product_link):
         campaign = data.get(
             "campaign"
         )
+
+        # Cuelinks affiliate status is treated at merchant/store
+        # level. If this domain is confirmed as non-affiliated,
+        # cache it and skip all future requests for this store.
+        if affiliated is False and store_domain:
+            NON_AFFILIATED_STORES.add(store_domain)
+
+            logger.warning(
+                "CUELINKS STORE MARKED NOT AFFILIATED | "
+                "Store: %s | Future Cuelinks requests will be skipped.",
+                store_domain,
+            )
 
         if not tracking_url:
 
@@ -599,13 +707,12 @@ def prepare_product(product):
 def find_existing_product(
     cursor,
     store_id,
-    product_link,
     product_name,
 ):
     """
     Find an existing product using:
 
-        store_id + product_link + name
+        store_id  + name
 
     Returns:
         (product_id, existing_price)
@@ -920,6 +1027,7 @@ def send_to_database(product):
     product = prepare_product(product)
 
     if not product:
+        record_database_result("failed")
         return False
 
     connection = None
@@ -957,6 +1065,7 @@ def send_to_database(product):
             )
 
             connection.rollback()
+            record_database_result("failed", product_name)
 
             return False
 
@@ -978,6 +1087,7 @@ def send_to_database(product):
             )
 
             connection.rollback()
+            record_database_result("failed", product_name)
 
             return False
 
@@ -999,6 +1109,7 @@ def send_to_database(product):
             )
 
             connection.rollback()
+            record_database_result("failed", product_name)
 
             return False
 
@@ -1049,6 +1160,7 @@ def send_to_database(product):
                 product_id,
             )
 
+            record_database_result("new", product_name)
             return True
 
         # ====================================================
@@ -1087,6 +1199,7 @@ def send_to_database(product):
             )
 
             connection.rollback()
+            record_database_result("unchanged", product_name)
 
             return True
 
@@ -1132,6 +1245,7 @@ def send_to_database(product):
             current_price,
         )
 
+        record_database_result("updated", product_name)
         return True
 
     except Exception as exc:
@@ -1165,6 +1279,7 @@ def send_to_database(product):
             "Database error details"
         )
 
+        record_database_result("failed", product_name)
         return False
 
     finally:
