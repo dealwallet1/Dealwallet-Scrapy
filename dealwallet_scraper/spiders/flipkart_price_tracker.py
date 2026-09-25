@@ -204,8 +204,7 @@ def get_flipkart_product_count(connection):
             WHERE LOWER(TRIM(s.name))
                   = LOWER(TRIM(%s))
               AND p.product_link IS NOT NULL
-              AND p.product_link <> ''
-              LIMIT 100;
+              AND p.product_link <> '';
         """
 
         cursor.execute(
@@ -313,8 +312,7 @@ def get_flipkart_products():
             WHERE LOWER(TRIM(s.name))
                   = LOWER(TRIM(%s))
               AND p.product_link IS NOT NULL
-              AND p.product_link <> ''
-            LIMIT 100;
+              AND p.product_link <> '';
         """
 
         print(
