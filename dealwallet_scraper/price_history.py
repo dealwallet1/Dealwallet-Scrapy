@@ -454,39 +454,89 @@ def generate_affiliate_url(product_link):
 # DATABASE CONNECTION
 # ============================================================
 
+# Reuse one PostgreSQL connection for the complete pipeline run.
+# This prevents opening a new database connection for every product.
+_SHARED_CONNECTION = None
+
 def get_connection():
-    """
-    Create PostgreSQL database connection.
-    """
+    """Return a reusable PostgreSQL connection."""
+    global _SHARED_CONNECTION
+
+    if _SHARED_CONNECTION is not None:
+        try:
+            if _SHARED_CONNECTION.closed == 0:
+                return _SHARED_CONNECTION
+        except Exception:
+            pass
+
+        try:
+            _SHARED_CONNECTION.close()
+        except Exception:
+            pass
+        _SHARED_CONNECTION = None
 
     missing = []
-
     if not DB_HOST:
         missing.append("DB_HOST")
-
     if not DB_NAME:
         missing.append("DB_NAME")
-
     if not DB_USER:
         missing.append("DB_USER")
-
     if not DB_PASSWORD:
         missing.append("DB_PASSWORD")
 
     if missing:
-
         raise RuntimeError(
             "Missing database configuration in .env: "
             f"{', '.join(missing)}"
         )
 
-    return psycopg2.connect(
+    logger.info("OPENING SHARED POSTGRESQL CONNECTION")
+
+    _SHARED_CONNECTION = psycopg2.connect(
         host=DB_HOST,
         port=DB_PORT,
         dbname=DB_NAME,
         user=DB_USER,
         password=DB_PASSWORD,
     )
+
+    logger.info("SHARED POSTGRESQL CONNECTION READY")
+    return _SHARED_CONNECTION
+
+def close_shared_connection():
+    """Close the shared PostgreSQL connection at process shutdown."""
+    global _SHARED_CONNECTION
+
+    if _SHARED_CONNECTION is None:
+        return
+
+    try:
+        if _SHARED_CONNECTION.closed == 0:
+            _SHARED_CONNECTION.close()
+            logger.info("SHARED POSTGRESQL CONNECTION CLOSED")
+    except Exception as exc:
+        logger.warning(
+            "SHARED POSTGRESQL CONNECTION CLOSE FAILED | Error: %s",
+            exc,
+        )
+    finally:
+        _SHARED_CONNECTION = None
+
+def reset_shared_connection():
+    """Close and clear the shared connection after a connection failure."""
+    global _SHARED_CONNECTION
+
+    if _SHARED_CONNECTION is not None:
+        try:
+            _SHARED_CONNECTION.close()
+        except Exception:
+            pass
+
+    _SHARED_CONNECTION = None
+
+# The connection is closed once when the process exits.
+atexit.register(close_shared_connection)
 
 
 # ============================================================
@@ -1269,6 +1319,8 @@ def send_to_database(product):
                     rollback_error,
                 )
 
+                reset_shared_connection()
+
         logger.error(
             "PRODUCT SKIPPED | Product: %s | Error: %s",
             product_name,
@@ -1278,6 +1330,11 @@ def send_to_database(product):
         logger.exception(
             "Database error details"
         )
+
+        # If PostgreSQL itself failed, force the next product to
+        # create a fresh connection instead of reusing a broken one.
+        if isinstance(exc, psycopg2.OperationalError):
+            reset_shared_connection()
 
         record_database_result("failed", product_name)
         return False
@@ -1291,9 +1348,6 @@ def send_to_database(product):
             except Exception:
                 pass
 
-        if connection:
-
-            try:
-                connection.close()
-            except Exception:
-                pass
+        # Keep the shared PostgreSQL connection open for the next product.
+        # It is closed once at process shutdown.
+        pass
