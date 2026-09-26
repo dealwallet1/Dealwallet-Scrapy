@@ -614,6 +614,9 @@ def extract_collection_products(html, max_products):
 
             # Image.
             image_link = get_image(card)
+            timestamp = datetime.now(
+                timezone(timedelta(hours=5, minutes=30))
+            ).strftime("%Y-%m-%dT%H:%M:%S")
 
             product = {
                 "name": name,
@@ -628,6 +631,7 @@ def extract_collection_products(html, max_products):
                 "organization_id": ORGANIZATION_ID,
                 "store_id": STORE_ID,
                 "categories_id": CATEGORY_ID,
+                "created_at": timestamp,
             }
 
        
