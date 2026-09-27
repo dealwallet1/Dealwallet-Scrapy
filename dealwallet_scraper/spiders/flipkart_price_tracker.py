@@ -30,7 +30,7 @@ DB_PASSWORD = os.getenv("DB_PASSWORD")
 STORE_NAME = "Flipkart"
 
 # Browser concurrency
-CONCURRENT_REQUESTS = 50
+CONCURRENT_REQUESTS = 1
 
 # Number of retries for failed/blocked pages
 MAX_RETRIES = 3
