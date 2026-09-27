@@ -66,7 +66,7 @@ SCRAPYD_SPIDERS = [
     "world_of_asaya",
     "beneude",
     "beyours",
-    "flipkart_price",
+    # "flipkart_price",
     
 ] 
  
