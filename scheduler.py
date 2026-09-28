@@ -68,6 +68,7 @@ SCRAPYD_SPIDERS = [
     "beyours",
     "flipkart_price",
     "boveee",
+    "wrapcart",
     
 ] 
  
