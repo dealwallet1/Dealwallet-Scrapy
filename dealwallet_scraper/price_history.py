@@ -1,6 +1,8 @@
 import atexit
 import logging
 import os
+import re
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -663,6 +665,114 @@ def get_category_id(
 
 
 # ============================================================
+# COMMON PRICE / DISCOUNT VALIDATION
+# ============================================================
+
+DISCOUNT_TOLERANCE_PERCENT = Decimal("2")
+
+
+def _to_decimal(value):
+    """Convert a scraped numeric value (including formatted strings) to Decimal."""
+    if value is None or isinstance(value, bool):
+        return None
+
+    if isinstance(value, Decimal):
+        return value
+
+    if isinstance(value, (int, float)):
+        try:
+            return Decimal(str(value))
+        except InvalidOperation:
+            return None
+
+    text_value = str(value).strip()
+    if not text_value or text_value.upper() in {"N/A", "NA", "NONE", "NULL", "-"}:
+        return None
+
+    text_value = text_value.replace(",", "").replace("₹", "").replace("Rs.", "").replace("Rs", "").strip()
+    text_value = text_value.replace("%", "").strip()
+
+    # Keep only a leading minus sign, digits, and decimal point.
+    text_value = re.sub(r"[^0-9.\\-]", "", text_value)
+    if not text_value or text_value in {"-", ".", "-."}:
+        return None
+
+    try:
+        return Decimal(text_value)
+    except InvalidOperation:
+        return None
+
+
+def validate_product_price(product):
+    """
+    Validate price and discount consistency before affiliate conversion
+    or any database insert/update/history operation.
+
+    Missing original_price skips only checks that require MRP.
+    """
+    if not isinstance(product, dict):
+        return False, "Product is not a dictionary"
+
+    name = product.get("name", "Unknown")
+    current_price = _to_decimal(product.get("price"))
+    original_raw = product.get("original_price")
+    original_price = _to_decimal(original_raw)
+    discount_raw = product.get("discount")
+    scraped_discount = _to_decimal(discount_raw)
+
+    if current_price is None:
+        return False, "Current price is missing or not numeric"
+
+    if current_price <= 0:
+        return False, f"Current price must be greater than zero (received {current_price})"
+
+    if discount_raw is not None and str(discount_raw).strip() != "":
+        if scraped_discount is None:
+            return False, f"Discount is not numeric (received {discount_raw})"
+        if scraped_discount < 0 or scraped_discount > 100:
+            return False, f"Discount is outside 0-100% (received {scraped_discount}%)"
+
+    # MRP-dependent checks are skipped when original_price is absent/invalid.
+    if original_price is None:
+        logger.info(
+            "PRICE VALIDATION | Original price unavailable; MRP-dependent "
+            "checks skipped | Product: %s",
+            name,
+        )
+        return True, None
+
+    if original_price <= 0:
+        return False, f"Original price must be greater than zero (received {original_price})"
+
+    if current_price > original_price:
+        return False, (
+            f"Current price {current_price} is greater than original price {original_price}"
+        )
+
+    if current_price == original_price and scraped_discount is not None and scraped_discount > 0:
+        return False, (
+            f"Current price equals MRP but scraped discount is {scraped_discount}%"
+        )
+
+    if scraped_discount is not None:
+        calculated_discount = (
+            (original_price - current_price) / original_price
+        ) * Decimal("100")
+        difference = abs(calculated_discount - scraped_discount)
+
+        if difference > DISCOUNT_TOLERANCE_PERCENT:
+            return False, (
+                "Calculated discount mismatch | "
+                f"Calculated: {calculated_discount:.4f}% | "
+                f"Scraped: {scraped_discount}% | "
+                f"Difference: {difference:.4f} percentage points "
+                f"(allowed: {DISCOUNT_TOLERANCE_PERCENT})"
+            )
+
+    return True, None
+
+
+# ============================================================
 # PREPARE PRODUCT
 # ============================================================
 
@@ -1073,6 +1183,23 @@ def send_to_database(product):
            No update/history.
     12. Commit.
     """
+
+    # Validate before prepare_product(), because preparation may call Cuelinks.
+    is_valid, validation_error = validate_product_price(product)
+
+    if not is_valid:
+        product_name = (
+            product.get("name", "Unknown")
+            if isinstance(product, dict)
+            else "Unknown"
+        )
+        logger.warning(
+            "PRODUCT SKIPPED BY PRICE VALIDATION | Product: %s | Reason: %s",
+            product_name,
+            validation_error,
+        )
+        record_database_result("failed", product_name)
+        return False
 
     product = prepare_product(product)
 
