@@ -69,6 +69,9 @@ SCRAPYD_SPIDERS = [
     "flipkart_price",
     "boveee",
     "wrapcart",
+    "woodland",
+    "woodland_price_tracker",
+
 ] 
  
  
