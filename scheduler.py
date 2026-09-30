@@ -71,7 +71,7 @@ SCRAPYD_SPIDERS = [
     "wrapcart",
     "woodland",
     "woodland_price_tracker",
-
+ "snapdeal_price_tracker",
 ] 
  
  
