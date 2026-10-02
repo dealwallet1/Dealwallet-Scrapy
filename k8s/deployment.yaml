@@ -87,7 +87,7 @@ spec:
       containers:
         - name: dealwallet-scheduler
 
-          image: ghcr.io/dealwallet1/dealwallet-scrapy:d300970
+          image: ghcr.io/dealwallet1/dealwallet-scrapy:latest
           imagePullPolicy: Always
 
           env:
@@ -111,4 +111,4 @@ spec:
 
             limits:
               cpu: "500m"
-              memory: "512Mi"
+              memory: "1Gi"

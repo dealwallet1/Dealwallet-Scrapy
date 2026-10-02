@@ -3,7 +3,7 @@ name: Build & Push DealWallet Scrapy
 on:
   push:
     branches:
-      - main
+      - celery_beat_reddis
 
   workflow_dispatch:
 
@@ -30,6 +30,7 @@ jobs:
         with:
           persist-credentials: true
           fetch-depth: 0
+          ref: celery_beat_reddis
 
       # --------------------------------------------------
       # Dynamic image tag
@@ -101,10 +102,10 @@ jobs:
           git commit -m "Update image tag to ${{ steps.vars.outputs.sha_short }}"
 
           # Get latest remote changes
-          git fetch origin main
+          git fetch origin celery_beat_reddis
 
-          # Rebase our commit on latest main
-          git rebase origin/main
+          # Rebase on latest celery_beat_reddis
+          git rebase origin/celery_beat_reddis
 
-          # Push rebased commit
-          git push origin HEAD:main
+          # Push updated manifest to celery_beat_reddis
+          git push origin HEAD:celery_beat_reddis

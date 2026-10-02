@@ -6,11 +6,11 @@ metadata:
   namespace: argocd
 
 spec:
-  project: dealwallet-scrapy
+  project: default
 
   source:
     repoURL: https://github.com/dealwallet1/Dealwallet-Scrapy.git
-    targetRevision: main
+    targetRevision: celery_beat_reddis
     path: k8s
 
   destination:
