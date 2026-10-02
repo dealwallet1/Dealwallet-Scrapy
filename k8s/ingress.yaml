@@ -10,7 +10,7 @@ metadata:
 
 spec:
   rules:
-    - host: scrapy.dealwallet.com
+    - host: celery-scrapy.dealwallet.com
 
       http:
         paths:
@@ -25,4 +25,4 @@ spec:
 
   tls:
     - hosts:
-        - scrapy.dealwallet.com
+        - celery-scrapy.dealwallet.com

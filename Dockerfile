@@ -7,8 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# System dependencies required by Scrapy,
-# lxml, psycopg2, Crawl4AI and Playwright
+# System dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
@@ -23,22 +22,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for Docker layer caching
+# Install Python dependencies
 COPY requirements.txt .
 
-# Install Python dependencies
 RUN pip install --upgrade pip setuptools wheel && \
     pip install -r requirements.txt
 
-# Install Chromium and Playwright dependencies
+# Install Chromium
 RUN playwright install --with-deps chromium
 
 # Copy application
 COPY . .
 
+# Scrapyd configuration
 COPY scrapyd.conf /etc/scrapyd/scrapyd.conf
 
-# Scrapyd runtime directories
+# Scrapyd directories
 RUN mkdir -p \
     /var/lib/scrapyd/logs \
     /var/lib/scrapyd/items \
@@ -46,6 +45,9 @@ RUN mkdir -p \
     /var/lib/scrapyd/dbs \
     /var/lib/scrapyd/eggs
 
+# Make entrypoint executable
+RUN chmod +x /app/entrypoint.sh
+
 EXPOSE 6800
 
-CMD ["scrapyd", "--pidfile="]
+ENTRYPOINT ["/app/entrypoint.sh"]
