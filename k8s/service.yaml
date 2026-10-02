@@ -12,5 +12,5 @@ spec:
   ports:
     - name: http
       protocol: TCP
-      port: 6800
+      port: 4079
       targetPort: 6800
