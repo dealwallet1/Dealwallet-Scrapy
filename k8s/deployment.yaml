@@ -1,6 +1,71 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: dealwallet-scrapyd
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: dealwallet-scrapyd
+
+  template:
+    metadata:
+      labels:
+        app: dealwallet-scrapyd
+
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+
+      containers:
+        - name: dealwallet-scrapyd
+
+          image: ghcr.io/dealwallet1/dealwallet-scrapy:e756fc3
+          imagePullPolicy: Always
+
+          ports:
+            - containerPort: 6800
+              protocol: TCP
+
+          env:
+            - name: TZ
+              value: Asia/Kolkata
+
+          envFrom:
+            - secretRef:
+                name: dealwallet-scrapy-secret
+
+          command:
+            - scrapyd
+
+          args:
+            - "--pidfile="
+
+          volumeMounts:
+            - name: dealwallet-scrapyd-storage
+              mountPath: /var/lib/scrapyd
+
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+
+            limits:
+              cpu: "1"
+              memory: "4Gi"
+
+      volumes:
+        - name: dealwallet-scrapyd-storage
+          persistentVolumeClaim:
+            claimName: dealwallet-scrapyd-pvc
+
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
   name: dealwallet-scheduler
 spec:
   replicas: 1
