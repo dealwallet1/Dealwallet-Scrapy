@@ -13,8 +13,7 @@ permissions:
 
 jobs:
   build-and-push:
-    # Prevent workflow from running again
-    # when GitHub Actions updates deployment.yaml
+
     if: github.actor != 'github-actions[bot]'
 
     runs-on: ubuntu-latest
@@ -67,45 +66,54 @@ jobs:
             ghcr.io/dealwallet1/dealwallet-scrapy:latest
 
       # --------------------------------------------------
-      # Update Deployment Image
+      # Update All Kubernetes Image References
       # --------------------------------------------------
 
-      - name: Update Deployment Image
+      - name: Update Kubernetes Images
         run: |
-          sed -i "s|image: ghcr.io/dealwallet1/dealwallet-scrapy:.*|image: ghcr.io/dealwallet1/dealwallet-scrapy:${{ steps.vars.outputs.sha_short }}|g" k8s/deployment.yaml
+          NEW_IMAGE="ghcr.io/dealwallet1/dealwallet-scrapy:${{ steps.vars.outputs.sha_short }}"
+
+          grep -rl \
+            "image: ghcr.io/dealwallet1/dealwallet-scrapy:" \
+            k8s \
+            --include="*.yaml" \
+            | xargs sed -i \
+            "s|image: ghcr.io/dealwallet1/dealwallet-scrapy:.*|image: ${NEW_IMAGE}|g"
 
       # --------------------------------------------------
-      # Verify Updated Image
+      # Verify Images
       # --------------------------------------------------
 
-      - name: Verify Deployment Image
+      - name: Verify Kubernetes Images
         run: |
-          echo "Updated deployment image:"
-          grep "image:" k8s/deployment.yaml
+          echo "Updated Kubernetes images:"
+
+          grep -R \
+            "image: ghcr.io/dealwallet1/dealwallet-scrapy:" \
+            k8s \
+            --include="*.yaml"
 
       # --------------------------------------------------
-      # Commit & Push Updated Manifest
+      # Commit & Push Updated Manifests
       # --------------------------------------------------
 
-      - name: Commit & Push Updated Manifest
+      - name: Commit & Push Updated Manifests
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
 
-          git add k8s/deployment.yaml
+          git add k8s/*.yaml
 
           if git diff --staged --quiet; then
-            echo "No deployment changes to commit"
+            echo "No Kubernetes image changes to commit"
             exit 0
           fi
 
-          git commit -m "Update image tag to ${{ steps.vars.outputs.sha_short }}"
+          git commit \
+            -m "Update image tag to ${{ steps.vars.outputs.sha_short }}"
 
-          # Get latest remote changes
           git fetch origin celery_beat_reddis
 
-          # Rebase on latest celery_beat_reddis
           git rebase origin/celery_beat_reddis
 
-          # Push updated manifest to celery_beat_reddis
           git push origin HEAD:celery_beat_reddis

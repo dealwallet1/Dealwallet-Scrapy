@@ -28,4 +28,4 @@ echo "======================================"
 echo "Scrapy project deployed successfully"
 echo "======================================"
 
-wait $SCRAPYD_PID
+wait "$SCRAPYD_PID"

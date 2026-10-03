@@ -2,45 +2,60 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: dealwallet-celery-worker
+
 spec:
   replicas: 1
+
   selector:
     matchLabels:
       app: dealwallet-celery-worker
+
   template:
     metadata:
       labels:
         app: dealwallet-celery-worker
+
     spec:
       imagePullSecrets:
         - name: ghcr-secret
+
       containers:
         - name: celery-worker
+
           image: ghcr.io/dealwallet1/dealwallet-scrapy:9996d28
           imagePullPolicy: Always
+
           command:
             - celery
+
           args:
             - "-A"
             - "dealwallet_scraper.celery.celery_app:celery_inst"
             - "worker"
             - "--loglevel=INFO"
+
           env:
             - name: REDIS_URL
               value: "redis://dealwallet-redis:6379/0"
+
             - name: SCRAPYD_URL
               value: "http://dealwallet-scrapyd:4079"
+
             - name: SCRAPYD_PROJECT
               value: "dealwallet_scraper"
+
             - name: TZ
               value: "Asia/Kolkata"
+
           envFrom:
             - secretRef:
                 name: dealwallet-scrapy-secret
+
           resources:
             requests:
               cpu: "100m"
               memory: "256Mi"
+
             limits:
               cpu: "500m"
               memory: "1Gi"
