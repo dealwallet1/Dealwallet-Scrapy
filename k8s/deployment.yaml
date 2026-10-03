@@ -24,7 +24,7 @@ spec:
       containers:
         - name: dealwallet-scrapyd
 
-          image: ghcr.io/dealwallet1/dealwallet-scrapy:0b885ff
+          image: ghcr.io/dealwallet1/dealwallet-scrapy:e6e2fbe
           imagePullPolicy: Always
 
           ports:

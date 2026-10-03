@@ -22,7 +22,7 @@ spec:
       containers:
         - name: celery-worker
 
-          image: ghcr.io/dealwallet1/dealwallet-scrapy:9996d28
+          image: ghcr.io/dealwallet1/dealwallet-scrapy:e6e2fbe
           imagePullPolicy: Always
 
           command:
