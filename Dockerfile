@@ -28,7 +28,7 @@ COPY requirements.txt .
 RUN pip install --upgrade pip setuptools wheel && \
     pip install -r requirements.txt
 
-# Install Chromium
+# Install Chromium for Playwright
 RUN playwright install --with-deps chromium
 
 # Copy application
@@ -47,6 +47,10 @@ RUN mkdir -p \
 
 # Make entrypoint executable
 RUN chmod +x /app/entrypoint.sh
+
+# Verify Celery and Redis are installed in the image
+RUN celery --version && \
+    python -c "import redis; print('redis:', redis.__version__)"
 
 EXPOSE 6800
 
