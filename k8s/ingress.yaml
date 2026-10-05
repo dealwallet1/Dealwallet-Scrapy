@@ -10,7 +10,7 @@ metadata:
 
 spec:
   rules:
-    - host: celery-scrapy.dealwallet.com
+    - host: celery-scrapy.dbinfo.dpdns.org
 
       http:
         paths:
@@ -25,4 +25,4 @@ spec:
 
   tls:
     - hosts:
-        - celery-scrapy.dealwallet.com
+        - celery-scrapy.dbinfo.dpdns.org
