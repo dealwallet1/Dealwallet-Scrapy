@@ -151,39 +151,10 @@ def clean_rating(value):
 # ============================================================
 
 def normalize_flipkart_url(url):
-    """
-    Remove search/tracking query parameters from the stored
-    Flipkart URL.
-
-    Example:
-
-    Original:
-    https://www.flipkart.com/product/p/itm123?
-    pid=ABC&lid=XYZ&q=test&otracker=search...
-
-    Result:
-    https://www.flipkart.com/product/p/itm123
-    """
-
+    """Preserve the complete stored Flipkart URL, including query parameters."""
     if not url:
         return None
-
-    try:
-        parsed = urlparse(url)
-
-        if not parsed.scheme or not parsed.netloc:
-            return url
-
-        clean_url = (
-            f"{parsed.scheme}://"
-            f"{parsed.netloc}"
-            f"{parsed.path}"
-        )
-
-        return clean_url.rstrip("?")
-
-    except Exception:
-        return url
+    return str(url).strip()
 
 
 # ============================================================
@@ -1021,22 +992,44 @@ async def scrape_product(context, product, index, total):
                 ])
                 rating = clean_rating(rating)
 
+            def values_differ(database_value, scraped_value):
+                if database_value is None or scraped_value is None:
+                    return None
+                try:
+                    return float(database_value) != float(scraped_value)
+                except (ValueError, TypeError):
+                    return None
+
             database_price = product.get("price")
-            price_changed = None
+            database_mrp = product.get("original_price")
+            database_discount = product.get("discount")
+
+            price_changed = values_differ(database_price, price)
+            original_price_changed = values_differ(database_mrp, original_price)
+            discount_changed = values_differ(database_discount, discount)
+
             price_difference = None
             if database_price is not None and price is not None:
                 try:
-                    db_price_number = int(float(database_price))
-                    price_changed = price != db_price_number
-                    price_difference = price - db_price_number
+                    price_difference = float(price) - float(database_price)
                 except (ValueError, TypeError):
                     pass
+
+            changed_flags = [price_changed, original_price_changed, discount_changed]
+            any_price_field_changed = (
+                any(flag is True for flag in changed_flags)
+                if any(flag is not None for flag in changed_flags)
+                else None
+            )
 
             result = tracking_result(
                 product, scrape_url, original_url, price,
                 original_price, discount, rating, "success", status_code
             )
             result["price_changed"] = price_changed
+            result["original_price_changed"] = original_price_changed
+            result["discount_changed"] = discount_changed
+            result["any_price_field_changed"] = any_price_field_changed
             result["price_difference"] = price_difference
 
             print("\\n" + "=" * 80)
@@ -1046,10 +1039,15 @@ async def scrape_product(context, product, index, total):
             print(f"Product ID        : {result['product_id']}")
             print(f"Database Price    : {result['database_price']}")
             print(f"Current Price     : {result['price']}")
-            print(f"Original Price    : {result['original_price']}")
-            print(f"Discount          : {result['discount']}")
+            print(f"Database MRP      : {database_mrp}")
+            print(f"Scraped MRP       : {result['original_price']}")
+            print(f"Database Discount : {database_discount}")
+            print(f"Scraped Discount : {result['discount']}")
             print(f"Rating            : {result['ratings']}")
             print(f"Price Changed     : {result['price_changed']}")
+            print(f"MRP Changed       : {result['original_price_changed']}")
+            print(f"Discount Changed  : {result['discount_changed']}")
+            print(f"Any Field Changed : {result['any_price_field_changed']}")
             print(f"Price Difference  : {result['price_difference']}")
             print(f"Status            : {result['status']}")
             print("=" * 80)
