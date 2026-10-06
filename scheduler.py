@@ -53,6 +53,8 @@ SCRAPYD_PROJECT = os.getenv(
 SCRAPYD_SPIDERS = [ 
     # "myntra_products",
      # "myntra_cat", 
+
+#    "flipkart",
    "soul_flower", 
     "wiselife", 
     "yardley",
@@ -62,16 +64,18 @@ SCRAPYD_SPIDERS = [
     "zingavita",
     "amydus",
     "buywow",
-    # "flipkart",
     "world_of_asaya",
     "beneude",
-    "beyours",
-    "flipkart_price",
+    "beyours",   
     "boveee",
     "wrapcart",
     "woodland",
+    "vijay_sales",
+    "flipkart_price",
     "woodland_price_tracker",
- "snapdeal_price_tracker",
+     "snapdeal_price_tracker",
+    "vijay_sales_price_tracking",
+ 
 ] 
  
  
