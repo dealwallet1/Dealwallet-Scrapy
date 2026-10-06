@@ -22,7 +22,7 @@ spec:
       containers:
         - name: celery-beat
 
-          image: ghcr.io/dealwallet1/dealwallet-scrapy:2f752b0
+          image: ghcr.io/dealwallet1/dealwallet-scrapy:de2ac23
           imagePullPolicy: Always
 
           command:
