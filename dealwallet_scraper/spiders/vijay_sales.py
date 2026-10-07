@@ -756,7 +756,7 @@ class VijaySalesSpider(scrapy.Spider):
         loop = asyncio.get_running_loop()
 
         with ProcessPoolExecutor(
-            max_workers=5
+            max_workers=1
         ) as executor:
 
             products = (
