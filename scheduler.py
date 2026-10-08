@@ -75,6 +75,7 @@ SCRAPYD_SPIDERS = [
     "woodland_price_tracker",
      "snapdeal_price_tracker",
     "vijay_sales_price_tracking",
+    "myntra_price_tracking",
  
 ] 
  
