@@ -71,12 +71,14 @@ SCRAPYD_SPIDERS = [
     "boveee",
     "wrapcart",
     "woodland",
+    "boat",
     "flipkart_price",
     "woodland_price_tracker",
      "snapdeal_price_tracker",
     "vijay_sales_price_tracking",
-    "myntra_price_tracking",
-    "boat",
+    "myntra_price_tracking",,
+    "zigly_price_tracking",
+    
  
 ] 
  
