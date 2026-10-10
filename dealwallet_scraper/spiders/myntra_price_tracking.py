@@ -41,7 +41,7 @@ BATCH_SIZE = 25
 
 # 5 = test five products
 # None = process all products
-TEST_LIMIT = 5
+TEST_LIMIT = None
 
 INPUT_FILE = "myntra_existing_products.json"
 OUTPUT_FILE = "myntra_existing_scraped_results.json"
