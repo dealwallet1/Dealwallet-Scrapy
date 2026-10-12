@@ -43,7 +43,7 @@ BATCH_SIZE = 25
 
 # Test with one product first.
 # Set to None to process every existing Zigly product.
-TEST_LIMIT = 10
+TEST_LIMIT = None
 
 INPUT_FILE = "zigly_existing_products.json"
 OUTPUT_FILE = "zigly_existing_scraped_results.json"

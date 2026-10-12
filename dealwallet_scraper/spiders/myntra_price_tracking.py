@@ -4,6 +4,7 @@ import sys
 import json
 import asyncio
 import logging
+import playwright
 import psycopg2
 import multiprocessing
 
@@ -1063,15 +1064,19 @@ async def scrape_myntra_products(products):
             logger.info("STARTING MYNTRA PLAYWRIGHT")
             logger.info("LAUNCHING INSTALLED GOOGLE CHROME")
 
+            
             browser = await playwright.chromium.launch(
-                channel="chrome",
-                headless=True,
-                args=[
-                    "--disable-quic",
-                    "--disable-blink-features=AutomationControlled",
-                    "--disable-dev-shm-usage",
-                ],
-            )
+    channel="chrome",
+    headless=True,
+    args=[
+        "--disable-http2",
+        "--disable-quic",
+        "--disable-blink-features=AutomationControlled",
+        "--disable-dev-shm-usage",
+        "--no-sandbox",
+    ],
+)
+
 
             logger.info("GOOGLE CHROME STARTED")
 
