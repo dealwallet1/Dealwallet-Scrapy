@@ -46,16 +46,7 @@ BASE_URLS = {
 
 
     "Mobile": (
-        "https://www.flipkart.com/search?"
-        "q=mobile"
-        "&otracker=search"
-        "&otracker1=search"
-        "&marketplace=FLIPKART"
-        "&as-show=on"
-        "&as=off"
-        "&as-pos=1"
-        "&as-type=HISTORY"
-        "&page="
+        "https://www.flipkart.com/search?q=mobiles&otracker=search&otracker1=search&marketplace=FLIPKART&as-show=on&as=off&p%5B%5D=facets.brand%255B%255D%3DApple&p%5B%5D=facets.brand%255B%255D%3DGoogle&p%5B%5D=facets.brand%255B%255D%3DSamsung&page="
     ),
     # Verification URL:
     # https://www.flipkart.com/search?q=mobile
@@ -286,16 +277,7 @@ BASE_URLS = {
 
 
     "Food": (
-        "https://www.flipkart.com/search?"
-        "q=food"
-        "&otracker=search"
-        "&otracker1=search"
-        "&marketplace=FLIPKART"
-        "&as-show=on"
-        "&as=off"
-        "&as-pos=1"
-        "&as-type=HISTORY"
-        "&page="
+        "https://www.flipkart.com/search?q=chips&otracker=search&otracker1=search&marketplace=FLIPKART&as-show=on&as=off&page="
     ),
     # Verification URL:
     # https://www.flipkart.com/search?q=food
