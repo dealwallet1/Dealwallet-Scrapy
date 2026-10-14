@@ -55,7 +55,7 @@ SCRAPYD_SPIDERS = [
      # "myntra_cat", 
 
 #    "flipkart",
-"homecentre",
+# "homecentre",
  "vijay_sales",
    "soul_flower", 
     "wiselife", 
@@ -73,6 +73,8 @@ SCRAPYD_SPIDERS = [
     "wrapcart",
     "woodland",
     "boat",
+    "vipbags_skybags",
+    "zop_store",
     "flipkart_price",
     "woodland_price_tracker",
      "snapdeal_price_tracker",
