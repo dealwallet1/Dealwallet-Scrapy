@@ -68,7 +68,6 @@ SCRAPYD_SPIDERS = [
     "buywow",
     "world_of_asaya",
     "beneude",
-    "beyours",   
     "boveee",
     "wrapcart",
     "woodland",
