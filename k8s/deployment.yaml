@@ -22,7 +22,7 @@ spec:
       containers:
         - name: dealwallet-scrapyd
 
-          image: ghcr.io/dealwallet1/dealwallet-scrapy:3f998c3
+          image: ghcr.io/dealwallet1/dealwallet-scrapy:18f1a3e
           imagePullPolicy: Always
 
           ports:
@@ -87,7 +87,7 @@ spec:
       containers:
         - name: dealwallet-scheduler
 
-          image: ghcr.io/dealwallet1/dealwallet-scrapy:3f998c3
+          image: ghcr.io/dealwallet1/dealwallet-scrapy:18f1a3e
           imagePullPolicy: Always
 
           env:
