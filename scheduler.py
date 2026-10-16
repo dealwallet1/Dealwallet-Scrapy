@@ -58,6 +58,8 @@ SCRAPYD_SPIDERS = [
 # "homecentre",
 # "zop_store",
 #  "vijay_sales",
+# "fabindia",
+
    "soul_flower", 
     "wiselife", 
     "yardley",
@@ -74,7 +76,7 @@ SCRAPYD_SPIDERS = [
     "woodland",
     "boat",
     "vipbags_skybags",
-    "fabindia",
+    "fabindia_price_tracking",
     "flipkart_price",
     "zop_price_tracking",
     "woodland_price_tracker",
