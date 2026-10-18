@@ -35,7 +35,7 @@ DB_PASSWORD = os.getenv("DB_PASSWORD")
 STORE_NAME = "Fabindia"
 
 # Test only 10 existing products.
-TEST_LIMIT = 10
+TEST_LIMIT = None
 
 CONCURRENT_REQUESTS = 3
 MAX_RETRIES = 3

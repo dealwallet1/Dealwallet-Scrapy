@@ -75,6 +75,7 @@ SCRAPYD_SPIDERS = [
     "wrapcart",
     "woodland",
     "boat",
+    "autofurnish",
     "vipbags_skybags",
     "fabindia_price_tracking",
     "flipkart_price",
