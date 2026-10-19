@@ -37,7 +37,7 @@ STORE_NAME = "Fabindia"
 # Test only 10 existing products.
 TEST_LIMIT = None
 
-CONCURRENT_REQUESTS = 3
+CONCURRENT_REQUESTS = 1
 MAX_RETRIES = 3
 PAGE_TIMEOUT = 60000
 
@@ -50,39 +50,22 @@ OUTPUT_FILE = "fabindia_price_tracking_results.json"
 # Based on the uploaded Fabindia scraper, with PDP fallbacks.
 # ============================================================
 PRICE_SELECTORS = (
-    "app-fab-pdp-summary .price_block_pdp_parent .amount",
     "app-fab-pdp-summary .price_block .amount",
-    "span.offer-amount",
-    ".offer-amount",
+    "app-fab-pdp-summary .price_block_pdp_parent .amount",
     "[itemprop='price']",
     "meta[property='product:price:amount']",
-    ".selling-price",
-    ".special-price",
-    ".price",
 )
 
 ORIGINAL_PRICE_SELECTORS = (
+    "app-fab-pdp-summary .price_block .deleted_price",
     "app-fab-pdp-summary .price_block_pdp_parent .deleted_price",
-    "app-fab-pdp-summary .deleted_price",
-    "del span.amount",
-    "del .amount",
-    "del span",
-    "del",
-    ".original-price",
-    ".mrp-price",
-    ".regular-price",
-    "[data-original-price]",
 )
 
 DISCOUNT_SELECTORS = (
+    "app-fab-pdp-summary .price_block .off_class",
     "app-fab-pdp-summary .price_block_pdp_parent .off_class",
-    "app-fab-pdp-summary .off_class",
-    "span.discount-amount span.amount",
-    "span.discount-amount",
-    ".discount-percent",
-    ".discount",
-    ".offer-discount",
 )
+
 RATING_SELECTORS = (
     "[itemprop='ratingValue']",
     ".rating-value",
@@ -90,7 +73,6 @@ RATING_SELECTORS = (
     ".product-rating",
     ".rating",
 )
-
 
 # ============================================================
 # HELPER FUNCTIONS

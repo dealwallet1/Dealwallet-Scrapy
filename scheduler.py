@@ -79,6 +79,7 @@ SCRAPYD_SPIDERS = [
     "vipbags_skybags",
     "fabindia_price_tracking",
     "flipkart_price",
+    "tira_beauty_price_tracking",
     "zop_price_tracking",
     "woodland_price_tracker",
      "snapdeal_price_tracker",
