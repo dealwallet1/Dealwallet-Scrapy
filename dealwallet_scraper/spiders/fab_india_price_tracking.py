@@ -51,14 +51,12 @@ OUTPUT_FILE = "fabindia_price_tracking_results.json"
 # ============================================================
 PRICE_SELECTORS = (
     "app-fab-pdp-summary .price_block .amount",
-    "app-fab-pdp-summary .price_block_pdp_parent .amount",
-    "[itemprop='price']",
-    "meta[property='product:price:amount']",
+ 
 )
 
 ORIGINAL_PRICE_SELECTORS = (
     "app-fab-pdp-summary .price_block .deleted_price",
-    "app-fab-pdp-summary .price_block_pdp_parent .deleted_price",
+   
 )
 
 DISCOUNT_SELECTORS = (
