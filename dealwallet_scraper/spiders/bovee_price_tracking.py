@@ -1,3 +1,4 @@
+
 import asyncio
 import json
 import logging
@@ -38,8 +39,6 @@ INPUT_FILE = "bovee_existing_products.json"
 OUTPUT_FILE = "bovee_price_tracking_results.json"
 FAILED_OUTPUT_FILE = "bovee_failed_products.json"
 
-# One selector per field, based on the provided Bovee HTML.
-PRODUCT_NAME_SELECTOR = ".prdct_scrption p"
 PRICE_SELECTOR = ".current-price .money"
 ORIGINAL_PRICE_SELECTOR = ".was-price .money"
 
@@ -227,8 +226,13 @@ def get_bovee_products():
             products.append(
                 {
                     "product_id": str(product_id),
+
+                    # Product name is taken only from PostgreSQL.
                     "name": name,
-                    "price": float(price) if price is not None else None,
+
+                    "price": (
+                        float(price) if price is not None else None
+                    ),
                     "original_price": (
                         float(original_price)
                         if original_price is not None
@@ -272,16 +276,9 @@ def get_bovee_products():
 def extract_product_data(html, product):
     soup = BeautifulSoup(html or "", "html.parser")
 
-    # Extract using the three selectors supplied from Bovee's HTML.
-    name_element = soup.select_one(PRODUCT_NAME_SELECTOR)
+    # Extract price fields only. Never scrape the product name.
     price_element = soup.select_one(PRICE_SELECTOR)
     original_price_element = soup.select_one(ORIGINAL_PRICE_SELECTOR)
-
-    product_name = (
-        clean_text(name_element.get_text(" ", strip=True))
-        if name_element
-        else None
-    )
 
     price = extract_price(
         price_element.get_text(" ", strip=True)
@@ -295,21 +292,24 @@ def extract_product_data(html, product):
         else None
     )
 
-    # Bovee's Shopify product JSON provides a fallback for price and stock.
+    # Shopify product JSON provides a fallback for price and stock.
     product_json = {}
-
     json_element = soup.select_one('script[id^="ProductJson-"]')
 
     if json_element:
         try:
-            product_json = json.loads(json_element.string or json_element.get_text())
+            product_json = json.loads(
+                json_element.string or json_element.get_text()
+            )
         except (json.JSONDecodeError, TypeError):
             product_json = {}
 
     if isinstance(product_json, dict):
         if price is None and product_json.get("price") is not None:
             try:
-                price = float(Decimal(str(product_json["price"])) / 100)
+                price = float(
+                    Decimal(str(product_json["price"])) / 100
+                )
             except (InvalidOperation, ValueError):
                 price = None
 
@@ -319,20 +319,22 @@ def extract_product_data(html, product):
         ):
             try:
                 original_price = float(
-                    Decimal(str(product_json["compare_at_price"])) / 100
+                    Decimal(
+                        str(product_json["compare_at_price"])
+                    ) / 100
                 )
             except (InvalidOperation, ValueError):
                 original_price = None
 
         available = product_json.get("available")
         out_of_stock = available is False
+
     else:
         out_of_stock = False
 
     discount = calculate_discount(price, original_price)
 
-    # Do not use the database price as the scraped live price.
-    # Existing DB values are retained only for comparison/fallback fields.
+    # Preserve existing database values when page fields are unavailable.
     if original_price is None:
         original_price = product.get("original_price")
 
@@ -343,14 +345,14 @@ def extract_product_data(html, product):
         "[EXTRACTED] ID=%s | Name=%s | Price=%s | MRP=%s | "
         "Discount=%s | OutOfStock=%s",
         product.get("product_id"),
-        product_name or product.get("name"),
+        product.get("name"),
         price,
         original_price,
         discount,
         out_of_stock,
     )
 
-    return product_name, price, original_price, discount, out_of_stock
+    return price, original_price, discount, out_of_stock
 
 
 def make_result(
@@ -364,7 +366,10 @@ def make_result(
 ):
     return {
         "product_id": product.get("product_id"),
+
+        # Always use the name retrieved from the database.
         "name": product.get("name"),
+
         "database_price": product.get("price"),
         "price": price,
         "original_price": (
@@ -394,7 +399,14 @@ def make_result(
     }
 
 
-async def scrape_one(crawler, run_config, product, index, total, semaphore):
+async def scrape_one(
+    crawler,
+    run_config,
+    product,
+    index,
+    total,
+    semaphore,
+):
     url = product["scrape_url"]
 
     logging.info(
@@ -422,11 +434,13 @@ async def scrape_one(crawler, run_config, product, index, total, semaphore):
                 )
 
             status_code = getattr(result, "status_code", None)
+
             html = (
                 getattr(result, "html", None)
                 or getattr(result, "cleaned_html", None)
                 or ""
             )
+
             error_message = clean_text(
                 getattr(result, "error_message", None)
             )
@@ -502,7 +516,6 @@ async def scrape_one(crawler, run_config, product, index, total, semaphore):
                 )
 
             (
-                live_name,
                 price,
                 original_price,
                 discount,
@@ -519,20 +532,22 @@ async def scrape_one(crawler, run_config, product, index, total, semaphore):
                     status_code,
                 )
 
-                if live_name:
-                    output["name"] = live_name
-
                 output["out_of_stock"] = out_of_stock
+
                 output["price_changed"] = values_differ(
                     product.get("price"), price
                 )
+
                 output["original_price_changed"] = values_differ(
                     product.get("original_price"), original_price
                 )
+
                 output["discount_changed"] = values_differ(
                     product.get("discount"), discount
                 )
+
                 output["ratings_changed"] = None
+
                 output["price_difference"] = (
                     float(price) - float(product["price"])
                     if product.get("price") is not None
@@ -567,7 +582,6 @@ async def scrape_one(crawler, run_config, product, index, total, semaphore):
                 len(html),
             )
 
-            # HTML loaded, but no live price was found.
             return make_result(
                 product,
                 None,
@@ -589,6 +603,7 @@ async def scrape_one(crawler, run_config, product, index, total, semaphore):
 
             if attempt < MAX_RETRIES:
                 await asyncio.sleep(attempt * 2)
+
             else:
                 return make_result(
                     product,
@@ -678,14 +693,12 @@ async def run_crawl4ai(products):
         )
     )
 
-    # Save all results with their full fields.
     save_json(OUTPUT_FILE, results)
 
-    # Failed JSON contains only ID, name and product link.
+    # Failed JSON contains product ID and product link.
     failed_results = [
         {
             "product_id": item.get("product_id"),
-            # "name": item.get("name"),
             "product_link": item.get("product_link"),
         }
         for item in results
@@ -699,9 +712,15 @@ async def run_crawl4ai(products):
         item.get("status") == "success" and item.get("price") is not None
         for item in results
     )
-    blocked = sum(item.get("status") == "blocked_403" for item in results)
+
+    blocked = sum(
+        item.get("status") == "blocked_403"
+        for item in results
+    )
+
     out_of_stock = sum(
-        item.get("status") == "out_of_stock" for item in results
+        item.get("status") == "out_of_stock"
+        for item in results
     )
 
     logging.info(
@@ -769,11 +788,13 @@ class BoveePriceTrackingSpider(scrapy.Spider):
         )
         self.logger.info("TEST_LIMIT=%s", TEST_LIMIT)
         self.logger.info("Using existing database product URLs only")
+        self.logger.info("Product names will remain from the database")
         self.logger.info("Failed products JSON: %s", FAILED_OUTPUT_FILE)
         self.logger.info("=" * 70)
 
         try:
             products = get_bovee_products()
+
         except Exception as exc:
             self.logger.error(
                 "Could not fetch existing Bovee products: %s",
@@ -802,6 +823,7 @@ class BoveePriceTrackingSpider(scrapy.Spider):
                     run_crawl4ai_process,
                     products,
                 )
+
         except Exception as exc:
             self.logger.error(
                 "Crawl4AI process failed: %s",
@@ -832,7 +854,7 @@ class BoveePriceTrackingSpider(scrapy.Spider):
                 )
                 continue
 
-            # Preserve existing DB prices for failed/missing-price products.
+            # Preserve existing database prices for failed products.
             if item.get("status") != "success" or item.get("price") is None:
                 skipped_count += 1
 
