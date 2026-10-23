@@ -90,6 +90,7 @@ SCRAPYD_SPIDERS = [
     "myntra_price_tracking",
     "zigly_price_tracking",
     "homecentre_price_tracking",
+    "dabur",
     
  
 ] 
