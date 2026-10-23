@@ -27,8 +27,8 @@ DB_NAME = os.getenv("DB_NAME")
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 
-TEST_LIMIT = None
-CONCURRENT_REQUESTS = 3
+TEST_LIMIT = 10
+CONCURRENT_REQUESTS = 1
 MAX_RETRIES = 3
 PAGE_TIMEOUT = 60000
 
@@ -51,7 +51,6 @@ PRICE_SELECTORS = (
     "[class*='price__current']",
     "[class*='ProductPrice']",
     "[class*='product-price']",
-    "[itemprop='price']",
     "meta[property='og:price:amount']",
 )
 
@@ -150,7 +149,10 @@ def extract_rating(value):
     if value is None:
         return None
 
-    match = re.search(r"(?<!\d)([0-5](?:\.\d+)?)(?!\d)", str(value))
+    match = re.search(
+        r"(?<!\d)([0-5](?:\.\d+)?)(?!\d)",
+        str(value),
+    )
 
     if not match:
         return None
@@ -350,7 +352,6 @@ def get_vaaree_products():
             len(products),
             invalid_urls,
         )
-
         logging.info("Saved input file: %s", os.path.abspath(INPUT_FILE))
 
         return products
@@ -422,11 +423,6 @@ def iter_product_jsonld(soup):
 def extract_product_data(html, product):
     soup = BeautifulSoup(html or "", "html.parser")
 
-    live_name = first_selector_value(
-        soup,
-        ('[data-testid="pdp-title"]',),
-    )
-
     price = extract_price(
         first_selector_value(soup, PRICE_SELECTORS)
     )
@@ -487,14 +483,15 @@ def extract_product_data(html, product):
         if isinstance(aggregate, dict):
             rating = extract_rating(aggregate.get("ratingValue"))
 
-    # Database values are fallbacks only, never proof of a live price.
+    # Do not scrape or replace the product name.
+    # Original price and discount can fall back to database values.
     if original_price is None:
         original_price = product.get("original_price")
 
     if discount is None:
         discount = product.get("discount")
 
-    return live_name, price, original_price, discount, rating
+    return price, original_price, discount, rating
 
 
 def make_result(
@@ -519,11 +516,15 @@ def make_result(
         ),
         "currency": product.get("currency") or "₹",
         "discount": (
-            discount if discount is not None else product.get("discount")
+            discount
+            if discount is not None
+            else product.get("discount")
         ),
         "database_ratings": product.get("ratings"),
         "ratings": (
-            rating if rating is not None else product.get("ratings")
+            rating
+            if rating is not None
+            else product.get("ratings")
         ),
         "description": product.get("description"),
         "image_link": product.get("image_link"),
@@ -686,13 +687,10 @@ async def scrape_one(
                     error_message or "Crawl4AI returned empty HTML.",
                 )
 
-            (
-                live_name,
-                price,
-                original_price,
-                discount,
-                rating,
-            ) = extract_product_data(html, product)
+            price, original_price, discount, rating = extract_product_data(
+                html,
+                product,
+            )
 
             if price is None:
                 logging.warning(
@@ -727,9 +725,6 @@ async def scrape_one(
                 "success",
                 status_code,
             )
-
-            if live_name:
-                output["name"] = live_name
 
             output["price_changed"] = values_differ(
                 product.get("price"),
@@ -854,15 +849,16 @@ async def run_crawl4ai(products):
         )
 
     failed_results = [
-    {
-        "product_id": item.get("product_id"),
-        # "name": item.get("name"),
-        "product_link": item.get("product_link"),
-    }
-    for item in results
-    if item.get("status") != "success"
-    or item.get("price") is None
-]
+        {
+            "product_id": item.get("product_id"),
+            "product_link": item.get("product_link"),
+            "status": item.get("status"),
+            "error": item.get("error"),
+        }
+        for item in results
+        if item.get("status") != "success"
+        or item.get("price") is None
+    ]
 
     with open(FAILED_OUTPUT_FILE, "w", encoding="utf-8") as file:
         json.dump(
@@ -872,12 +868,6 @@ async def run_crawl4ai(products):
             ensure_ascii=False,
             default=str,
         )
-
-    logging.info(
-        "[FAILED JSON] Failed=%s | File=%s",
-        len(failed_results),
-        os.path.abspath(FAILED_OUTPUT_FILE),
-    )
 
     successful = sum(
         item.get("status") == "success"
@@ -899,6 +889,12 @@ async def run_crawl4ai(products):
         os.path.abspath(OUTPUT_FILE),
     )
 
+    logging.info(
+        "[FAILED JSON] Failed=%s | File=%s",
+        len(failed_results),
+        os.path.abspath(FAILED_OUTPUT_FILE),
+    )
+
     return results
 
 
@@ -914,9 +910,11 @@ def run_crawl4ai_process(products):
         len(products),
     )
 
+    results = asyncio.run(run_crawl4ai(products))
+
     return {
         "success": True,
-        "results": asyncio.run(run_crawl4ai(products)),
+        "results": results,
         "output_file": OUTPUT_FILE,
     }
 
@@ -950,12 +948,11 @@ class VaareePriceTrackingSpider(scrapy.Spider):
             FAILED_OUTPUT_FILE,
         )
         self.logger.info("Using stored URLs only; no product discovery")
-        self.logger.info("HTTP 403 responses are recorded without retrying")
+        self.logger.info("Product names are sourced from PostgreSQL only")
         self.logger.info("=" * 70)
 
         try:
             products = get_vaaree_products()
-
         except Exception as exc:
             self.logger.error(
                 "Could not fetch existing Vaaree products: %s",
@@ -1043,8 +1040,7 @@ class VaareePriceTrackingSpider(scrapy.Spider):
             yield item
 
         self.logger.info(
-            "Finished | Scraped=%s | Sent to pipeline=%s | "
-            "Skipped=%s | JSON=%s",
+            "Finished | Scraped=%s | Sent to pipeline=%s | Skipped=%s | JSON=%s",
             len(results),
             pipeline_count,
             skipped_count,
