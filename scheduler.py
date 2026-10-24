@@ -78,7 +78,7 @@ SCRAPYD_SPIDERS = [
     "autofurnish",
     "bovee_price_tracking",
     "croma_price_tracking",
-    "vaaree_price_tracking",
+    # "vaaree_price_tracking",
     "vipbags_skybags",
     # "fabindia_price_tracking",
     "flipkart_price",
