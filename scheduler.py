@@ -76,7 +76,7 @@ SCRAPYD_SPIDERS = [
     "woodland",
     "boat",
     "autofurnish",
-    "bovee_price_tracking",
+    # "bovee_price_tracking",
     # "croma_price_tracking",
     # "vaaree_price_tracking",
     "vipbags_skybags",
@@ -91,7 +91,7 @@ SCRAPYD_SPIDERS = [
     "myntra_price_tracking",
     "zigly_price_tracking",
     "homecentre_price_tracking",
-    "dabur",
+    # "dabur",
     
  
 ] 
