@@ -77,7 +77,7 @@ SCRAPYD_SPIDERS = [
     "boat",
     "autofurnish",
     "bovee_price_tracking",
-    "croma_price_tracking",
+    # "croma_price_tracking",
     # "vaaree_price_tracking",
     "vipbags_skybags",
     # "fabindia_price_tracking",
