@@ -34,7 +34,7 @@ BASE_URL = "https://www.snapdeal.com"
 
 MAX_RETRIES = 3
 PAGE_TIMEOUT = 60000
-TEST_LIMIT = None  # Fetch all existing Snapdeal products
+TEST_LIMIT = None # Fetch all existing Snapdeal products
 
 INPUT_FILE = "snapdeal_existing_products.json"
 OUTPUT_FILE = "snapdeal_existing_scraped_results.json"
@@ -287,45 +287,44 @@ def extract_description(html):
 # ============================================================
 # IMAGE EXTRACTION
 # ============================================================
-
 async def extract_image(page):
 
     selectors = [
-
-        'img[src*="/product/images/"]',
-
-        'img[data-src*="/product/images/"]',
-
-        "main img",
-
-        "img",
-
+        "li img.cloudzoom",
+        "img.cloudzoom",
+        "img[bigsrc*='g.sdlcdn.com/imgs/']",
+        "img[src*='g.sdlcdn.com/imgs/']",
+        "img[data-src*='g.sdlcdn.com/imgs/']",
     ]
 
     for selector in selectors:
 
         try:
-
             images = page.locator(selector)
-
             count = await images.count()
 
             for index in range(count):
 
                 img = images.nth(index)
 
-                for attr in ("src", "data-src", "data-lazy-src"):
+                for attr in ("bigsrc", "src", "data-src", "data-lazy-src"):
 
                     try:
-
                         value = await img.get_attribute(attr)
 
-                        if value and not value.startswith("data:"):
+                        if not value:
+                            continue
 
-                            value = urljoin(BASE_URL, value)
+                        value = urljoin(BASE_URL, value)
 
-                            if value.startswith("http"):
-                                return value
+                        # Accept only Snapdeal product images
+                        if (
+                            value.startswith("https://g.sdlcdn.com/imgs/")
+                            and value.lower().split("?")[0].endswith(
+                                (".jpg", ".jpeg", ".png", ".webp")
+                            )
+                        ):
+                            return value
 
                     except Exception:
                         continue
@@ -334,8 +333,6 @@ async def extract_image(page):
             continue
 
     return None
-
-
 # ============================================================
 # DATABASE: FETCH EXISTING WOODLAND PRODUCTS
 # ============================================================
@@ -419,6 +416,8 @@ def get_snapdeal_products():
         cursor.execute(query, (STORE_NAME,))
 
         rows = cursor.fetchall()
+        if TEST_LIMIT:
+            rows = rows[:TEST_LIMIT]
 
         products = []
 
@@ -529,7 +528,7 @@ def make_result(
     image_link=None,
     status="failed",
     http_status=None,
-    scraped_name=None
+    
 ):
 
     database_price = product.get("price")
@@ -622,7 +621,7 @@ def make_result(
 
         "http_status": http_status,
 
-        "scraped_name": scraped_name,
+
 
     }
 
@@ -721,11 +720,7 @@ async def scrape_product(context, product, index, total):
             # PRODUCT NAME
             # ====================================================
 
-            scraped_name = await get_first_text(page, [
-                "h1.pdp-e-i-head",
-                "h1[itemprop='name']",
-                "h1",
-            ])
+           
 
             # ====================================================
             # DESCRIPTION
@@ -780,21 +775,33 @@ async def scrape_product(context, product, index, total):
                     image_link=image_link,
                     status="price_missing",
                     http_status=status_code,
-                    scraped_name=scraped_name
+                 
                 )
 
+            # A product without a calculated discount must be included
+            # in the failed-products report.
+            if discount is None:
+                product_status = "discount_missing"
+            
+                logger.warning(
+                    "DISCOUNT MISSING | Product ID=%s | Name=%s | Original Price=%s | Price=%s",
+                    product.get("product_id"),
+                    product.get("name"),
+                    original_price,
+                    price
+                )
+            else:
+                product_status = "success"
+            
             result = make_result(
-
                 product,
                 url,
                 price=price,
                 original_price=original_price,
                 description=description,
                 image_link=image_link,
-                status="success",
+                status=product_status,
                 http_status=status_code,
-                scraped_name=scraped_name
-
             )
 
             logger.info(
@@ -958,15 +965,21 @@ async def run_scraper(products):
         for r in results
     )
 
+    discount_missing = sum(
+        r.get("status") == "discount_missing"
+        for r in results
+    )
+
     failed = sum(
         r.get("status") in ("failed", "non_200")
         for r in results
     )
 
     logger.info(
-        "Finished | Total=%s | Success=%s | Price Missing=%s | Failed=%s",
+        "Finished | Total=%s | Success=%s | Discount Missing=%s | Price Missing=%s | Failed=%s",
         len(results),
         success,
+        discount_missing,
         price_missing,
         failed
     )
