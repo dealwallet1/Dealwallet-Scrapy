@@ -92,6 +92,7 @@ SCRAPYD_SPIDERS = [
     "zigly_price_tracking",
     "homecentre_price_tracking",
     # "dabur",
+    "miniklub",
     
  
 ] 
