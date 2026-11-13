@@ -93,6 +93,7 @@ SCRAPYD_SPIDERS = [
     "homecentre_price_tracking",
     # "dabur",
     "miniklub",
+    "kindlife",
     
  
 ] 
