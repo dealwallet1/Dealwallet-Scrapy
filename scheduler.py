@@ -94,6 +94,7 @@ SCRAPYD_SPIDERS = [
     # "dabur",
     "miniklub",
     "kindlife",
+    "fabartcraft",
     
  
 ] 
