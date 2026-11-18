@@ -98,6 +98,7 @@ SCRAPYD_SPIDERS = [
     "fitfeast",
     "decorkart",
     "purehome",
+    "giva",
     
  
 ] 
