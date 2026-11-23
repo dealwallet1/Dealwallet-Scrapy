@@ -100,7 +100,9 @@ SCRAPYD_SPIDERS = [
     "purehome",
     "giva",
     "savana",
-    "home_essentials"
+    "home_essentials",
+    "archies"
+    
     
  
 ] 
