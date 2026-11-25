@@ -101,7 +101,8 @@ SCRAPYD_SPIDERS = [
     "giva",
     "savana",
     "home_essentials",
-    "archies"
+    "archies",
+    "ugreen"
     
     
  
