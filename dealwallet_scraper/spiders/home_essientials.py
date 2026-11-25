@@ -19,24 +19,24 @@ from playwright.async_api import async_playwright
 
 BASE_URL = "https://homeessentials.in"
 
-MAX_PAGES = 2
+MAX_PAGES = 1
 
 BASE_URLS = {
-    # "Home & Kitchen": [
-    #     "https://homeessentials.in/collections/cooking",
-    #     "https://homeessentials.in/collections/kitchen",
-    # "https://homeessentials.in/collections/honeycomb-cookware",
-    # "https://homeessentials.in/collections/stainless-steel-cookware"
-    # "https://homeessentials.in/collections/cast-iron-cookware"
-    # "https://homeessentials.in/collections/maifan-stone-cookware"
-    # "https://homeessentials.in/collections/aluminum-alloy-titanium-cookware"
-    # ],
-    # "Furnitures": [
-    #     "https://homeessentials.in/collections/wooden-furniture",
-    #     "https://homeessentials.in/collections/coat-racks",
-    #     "https://homeessentials.in/collections/wooden-shoe-racks",
-    #     "https://homeessentials.in/collections/oxford-furniture"
-    # ],
+    "Home & Kitchen": [
+        "https://homeessentials.in/collections/cooking",
+        "https://homeessentials.in/collections/kitchen",
+    "https://homeessentials.in/collections/honeycomb-cookware",
+    "https://homeessentials.in/collections/stainless-steel-cookware"
+    "https://homeessentials.in/collections/cast-iron-cookware"
+    "https://homeessentials.in/collections/maifan-stone-cookware"
+    "https://homeessentials.in/collections/aluminum-alloy-titanium-cookware"
+    ],
+    "Furnitures": [
+        "https://homeessentials.in/collections/wooden-furniture",
+        "https://homeessentials.in/collections/coat-racks",
+        "https://homeessentials.in/collections/wooden-shoe-racks",
+        "https://homeessentials.in/collections/oxford-furniture"
+    ],
     "Home Decor": [
         "https://homeessentials.in/collections/home-decor"
     ],
